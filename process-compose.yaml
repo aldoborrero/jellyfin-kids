@@ -1,0 +1,49 @@
+# Dev loop: `dev` (or `process-compose up`) from the devshell.
+# Editing the plugin rebuilds and installs it, then restarts Jellyfin to load it (watch + cascade).
+version: "0.5"
+
+log_location: .dev/process-compose.log
+
+processes:
+  plugin:
+    description: Build the plugin and install it in the dev server's plugins folder
+    command: scripts/dev-deploy.sh
+    availability:
+      restart: "no"
+    watch:
+      cascade: true
+      debounce: 500ms
+      paths:
+        - path: src
+          include: ["*.cs", "*.csproj", "*.html", "*.js", "*.css"]
+        - path: .
+          include: ["build.yaml", "Directory.Build.props"]
+          exclude: [".dev", ".reference", "src"]
+
+  jellyfin:
+    description: Jellyfin 12.x on http://127.0.0.1:8096, state under .dev/
+    command: scripts/dev-jellyfin.sh
+    depends_on:
+      plugin:
+        condition: process_completed_successfully
+    readiness_probe:
+      # While starting, Jellyfin answers every path (even /health) with a status page, so wait for real JSON
+      exec:
+        command: curl --silent --fail http://127.0.0.1:8096/System/Info/Public | jq --exit-status .Version
+      initial_delay_seconds: 2
+      period_seconds: 2
+      failure_threshold: 90
+    availability:
+      restart: on_failure
+    shutdown:
+      signal: 2
+      timeout_seconds: 15
+
+  provision:
+    description: Finish the startup wizard and create the dev admin and kid users (idempotent)
+    command: scripts/dev-provision.sh
+    depends_on:
+      jellyfin:
+        condition: process_healthy
+    availability:
+      restart: "no"

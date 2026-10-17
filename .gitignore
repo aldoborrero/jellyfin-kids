@@ -1,0 +1,17 @@
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# .NET
+bin/
+obj/
+*.user
+
+# Dev loop state (Jellyfin data, config, cache, logs)
+.dev/
+
+# Upstream sources cloned for reference
+.reference/
+
+.envrc.local
