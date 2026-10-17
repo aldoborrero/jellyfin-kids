@@ -35,8 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Configuration\configPage.html" />
-    <EmbeddedResource Include="Configuration\configPage.html" />
+    <!-- Dashboard pages, served by Jellyfin from the assembly -->
+    <None Remove="Configuration\*.html;Configuration\*.js" />
+    <EmbeddedResource Include="Configuration\*.html;Configuration\*.js" />
   </ItemGroup>
 
 </Project>

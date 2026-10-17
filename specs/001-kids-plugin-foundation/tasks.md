@@ -340,7 +340,7 @@ unmarks kids, and warns on kids who are administrators.
 **Independent Test**: quickstart.md §5 steps 1–2 (mark `alice` and the admin, see the warning, unmark with
 confirmation), plus check (j): the anonymous page HTML holds no data.
 
-- [ ] T026 [US2] Replace src/Jellyfin.Plugin.Kids/Configuration/configPage.html with src/Jellyfin.Plugin.Kids/Configuration/kids.html and add src/Jellyfin.Plugin.Kids/Configuration/kids.js (contracts/dashboard-pages.md "Kids (list)"; research R10):
+- [X] T026 [US2] Replace src/Jellyfin.Plugin.Kids/Configuration/configPage.html with src/Jellyfin.Plugin.Kids/Configuration/kids.html and add src/Jellyfin.Plugin.Kids/Configuration/kids.js (contracts/dashboard-pages.md "Kids (list)"; research R10):
   - **HTML**: `<div data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsJs">`
     with a static list container, an error container and no data.
   - **JS**: `export default function (view, params)`, which on `viewshow`:
@@ -355,8 +355,8 @@ confirmation), plus check (j): the anonymous page HTML holds no data.
     of an empty list.
   - **Feedback**: use `Dashboard.showLoadingMsg`/`hideLoadingMsg`. Plain `<input type=checkbox>` must still work
     when `emby-checkbox` is not registered (research R10 risk).
-- [ ] T027 [US2] Update src/Jellyfin.Plugin.Kids/Plugin.cs `GetPages()` to return pages `Kids` (resource `….Configuration.kids.html`, `EnableInMainMenu = true`, `DisplayName = "Kids"`, `MenuIcon = "child_care"`) and `KidsJs` (resource `….Configuration.kids.js`), and update the `EmbeddedResource`/`None Remove` items in src/Jellyfin.Plugin.Kids/Jellyfin.Plugin.Kids.csproj for kids.html and kids.js (drop configPage.html)
-- [ ] T028 [US2] Append check (j) to scripts/dev-check.sh. `GET /web/ConfigurationPage?name=Kids` and `?name=KidsJs`
+- [X] T027 [US2] Update src/Jellyfin.Plugin.Kids/Plugin.cs `GetPages()` to return pages `Kids` (resource `….Configuration.kids.html`, `EnableInMainMenu = true`, `DisplayName = "Kids"`, `MenuIcon = "child_care"`) and `KidsJs` (resource `….Configuration.kids.js`), and update the `EmbeddedResource`/`None Remove` items in src/Jellyfin.Plugin.Kids/Jellyfin.Plugin.Kids.csproj for kids.html and kids.js (drop configPage.html)
+- [X] T028 [US2] Append check (j) to scripts/dev-check.sh. `GET /web/ConfigurationPage?name=Kids` and `?name=KidsJs`
   without a token must:
   - return 200;
   - contain no GUID-shaped strings;
@@ -380,15 +380,15 @@ It saves through the revision rule, and a conflict never overwrites.
 read the values back as `alice`, change her settings meanwhile from curl to trigger a conflict, and see a deleted
 pick shown as missing.
 
-- [ ] T029 [P] [US4] Create src/Jellyfin.Plugin.Kids/Api/PickCandidateDto.cs (`Id`, `Name`, `Type` as `"BoxSet"`/`"Playlist"`) and add `GET Admin/PickCandidates?search=&ids=&limit=` to src/Jellyfin.Plugin.Kids/Api/KidsController.cs:
+- [X] T029 [P] [US4] Create src/Jellyfin.Plugin.Kids/Api/PickCandidateDto.cs (`Id`, `Name`, `Type` as `"BoxSet"`/`"Playlist"`) and add `GET Admin/PickCandidates?search=&ids=&limit=` to src/Jellyfin.Plugin.Kids/Api/KidsController.cs:
   - **Auth**: `IgnoreParentalControl` policy, plus `ProfileAccess.CanMutate`; anyone else gets 403.
   - **`limit`**: default 50; values over 200 are clamped to 200.
   - **`ids`**: a comma-separated list. When given, return `IPickCatalog.Resolve(ids)`; ids that don't resolve are
     simply absent from the answer.
   - **Otherwise**: return `IPickCatalog.Search(search, limit)`, ordered by name.
   - Contract: contracts/kids-api-v1.md "GET /Kids/Admin/PickCandidates".
-- [ ] T030 [US4] Create src/Jellyfin.Plugin.Kids/Configuration/kidsUser.html (`data-controller="__plugin/KidsUserJs"`, static form: search checkbox, autoplay checkbox, autoplay limit number input `min=1 max=10`, sections list, picks list, add-pick search box and results, Save button, conflict banner with "Load current settings", missing-kid message) and register pages `KidsUser` and `KidsUserJs` (not in menu) in src/Jellyfin.Plugin.Kids/Plugin.cs and as embedded resources in src/Jellyfin.Plugin.Kids/Jellyfin.Plugin.Kids.csproj
-- [ ] T031 [US4] Create src/Jellyfin.Plugin.Kids/Configuration/kidsUser.js (`export default function (view, params)`;
+- [X] T030 [US4] Create src/Jellyfin.Plugin.Kids/Configuration/kidsUser.html (`data-controller="__plugin/KidsUserJs"`, static form: search checkbox, autoplay checkbox, autoplay limit number input `min=1 max=10`, sections list, picks list, add-pick search box and results, Save button, conflict banner with "Load current settings", missing-kid message) and register pages `KidsUser` and `KidsUserJs` (not in menu) in src/Jellyfin.Plugin.Kids/Plugin.cs and as embedded resources in src/Jellyfin.Plugin.Kids/Jellyfin.Plugin.Kids.csproj
+- [X] T031 [US4] Create src/Jellyfin.Plugin.Kids/Configuration/kidsUser.js (`export default function (view, params)`;
   contracts/dashboard-pages.md "KidsUser (editor)").
   - **Load** on `viewshow`:
     - `GET Kids/Users/{params.userId}/Profile` and `ApiClient.getUser(userId)` for the name;
@@ -411,7 +411,7 @@ pick shown as missing.
       the 409 body. Never re-send automatically.
     - 404: "This user is no longer a kid".
   - Never report success unless the answer was 200.
-- [ ] T032 [US4] Append check (l) to scripts/dev-check.sh. `GET /Kids/Admin/PickCandidates` as `alice` must return
+- [X] T032 [US4] Append check (l) to scripts/dev-check.sh. `GET /Kids/Admin/PickCandidates` as `alice` must return
   403, and as `admin` must return 200 with a JSON array.
 
 **Checkpoint**: parents can configure each kid from the dashboard (SC-003, SC-005 for the editor).
@@ -428,15 +428,15 @@ restart.
 
 ### Tests for User Story 5
 
-- [ ] T033 [P] [US5] Write tests/Jellyfin.Plugin.Kids.Tests/OrphanProfileSweeperTests.cs (temp-dir store, `FakeUserDirectory`):
+- [X] T033 [P] [US5] Write tests/Jellyfin.Plugin.Kids.Tests/OrphanProfileSweeperTests.cs (temp-dir store, `FakeUserDirectory`):
   - profiles whose user ids are missing from `GetAllUserIds()` are deleted, and the others are kept;
   - an empty user list deletes nothing;
   - an unusable database is skipped without throwing.
 
 ### Implementation for User Story 5
 
-- [ ] T034 [P] [US5] Create src/Jellyfin.Plugin.Kids/Events/UserDeletedConsumer.cs: `IEventConsumer<UserDeletedEventArgs>` whose `OnEvent` calls `KidProfileService.DeleteAsync(e.Argument.Id)` and logs at Information when a profile was removed (namespaces `Jellyfin.Data.Events.Users`, `MediaBrowser.Controller.Events`; research R7)
-- [ ] T035 [P] [US5] Create src/Jellyfin.Plugin.Kids/Hosted/OrphanProfileSweeper.cs, an `IHostedService`:
+- [X] T034 [P] [US5] Create src/Jellyfin.Plugin.Kids/Events/UserDeletedConsumer.cs: `IEventConsumer<UserDeletedEventArgs>` whose `OnEvent` calls `KidProfileService.DeleteAsync(e.Argument.Id)` and logs at Information when a profile was removed (namespaces `Jellyfin.Data.Events.Users`, `MediaBrowser.Controller.Events`; research R7)
+- [X] T035 [P] [US5] Create src/Jellyfin.Plugin.Kids/Hosted/OrphanProfileSweeper.cs, an `IHostedService`:
   - In `StartAsync`:
     - call `KidsDatabase.EnsureInitialized()`, so the store is created and migrated at startup. This runs after
       `CreatePlugins()` (Program.cs:222 → 235);
@@ -446,8 +446,8 @@ restart.
     - log "Removed {Count} orphaned kid profile(s)" when the count is above 0.
   - `StopAsync` is a no-op.
   - Makes T033 pass.
-- [ ] T036 [US5] Register `services.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedConsumer>()` and `services.AddHostedService<OrphanProfileSweeper>()` in src/Jellyfin.Plugin.Kids/PluginServiceRegistrator.cs
-- [ ] T037 [US5] Append check (k) to scripts/dev-check.sh, as admin:
+- [X] T036 [US5] Register `services.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedConsumer>()` and `services.AddHostedService<OrphanProfileSweeper>()` in src/Jellyfin.Plugin.Kids/PluginServiceRegistrator.cs
+- [X] T037 [US5] Append check (k) to scripts/dev-check.sh, as admin:
   1. Create user `tmpkid` with `POST /Users/New`, deleting any leftover `tmpkid` first.
   2. Mark `tmpkid`.
   3. Delete `tmpkid` with `DELETE /Users/{id}`.
@@ -459,14 +459,14 @@ restart.
 
 ## Phase 8: Polish & cross-cutting concerns
 
-- [ ] T038 [P] Update README.md: replace the "Development" curl examples with `scripts/dev-check.sh` and `dotnet test`, and add a short "API" pointer to specs/001-kids-plugin-foundation/contracts/kids-api-v1.md
-- [ ] T039 [P] Apply the docs/plan.md changes listed in specs/001-kids-plugin-foundation/plan.md "docs/plan.md updates":
+- [X] T038 [P] Update README.md: replace the "Development" curl examples with `scripts/dev-check.sh` and `dotnet test`, and add a short "API" pointer to specs/001-kids-plugin-foundation/contracts/kids-api-v1.md
+- [X] T039 [P] Apply the docs/plan.md changes listed in specs/001-kids-plugin-foundation/plan.md "docs/plan.md updates":
   - §4.1 JSON casing: Jellyfin defaults.
   - §4.1: `PUT` with `Revision: 0` creates the profile; 409 if the user is already a kid.
   - §4.1: add `GET /Kids/Admin/PickCandidates`.
   - §4: `Admin/Overview` moves to feature 3.
   - §8: note that 12.0 and 12.1 runtime loading is not verified (accepted risk).
-- [ ] T040 Run the full quickstart.md:
+- [X] T040 Run the full quickstart.md:
   - §1: `dotnet build` with zero warnings, and `dotnet test`.
   - §2: `scripts/dev-check.sh`; all checks pass.
   - §3: allowed hours (automated by check m; the manual run is optional).
@@ -476,7 +476,7 @@ restart.
 
   Fix whatever fails, and record the results in specs/001-kids-plugin-foundation/quickstart.md under a
   "Last run" note.
-- [ ] T041 Check src/Jellyfin.Plugin.Kids/bin output and the deployed folder `.dev/data/plugins/Kids_0.0.1.0/` contain only `Jellyfin.Plugin.Kids.dll`/`.pdb`/`meta.json` (no Microsoft.Data.Sqlite or SQLitePCL DLLs shipped), matching the build.yaml `artifacts` whitelist
+- [X] T041 Check src/Jellyfin.Plugin.Kids/bin output and the deployed folder `.dev/data/plugins/Kids_0.0.1.0/` contain only `Jellyfin.Plugin.Kids.dll`/`.pdb`/`meta.json` (no Microsoft.Data.Sqlite or SQLitePCL DLLs shipped), matching the build.yaml `artifacts` whitelist
 
 ---
 

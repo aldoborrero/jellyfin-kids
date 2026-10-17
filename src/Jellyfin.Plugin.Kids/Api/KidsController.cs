@@ -30,16 +30,19 @@ public class KidsController : ControllerBase
 {
     private readonly IAuthorizationContext _authorizationContext;
     private readonly KidProfileService _profiles;
+    private readonly IPickCatalog _pickCatalog;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidsController"/> class.
     /// </summary>
     /// <param name="authorizationContext">Jellyfin's authorization context.</param>
     /// <param name="profiles">The kid profile service.</param>
-    public KidsController(IAuthorizationContext authorizationContext, KidProfileService profiles)
+    /// <param name="pickCatalog">The server's collections and playlists.</param>
+    public KidsController(IAuthorizationContext authorizationContext, KidProfileService profiles, IPickCatalog pickCatalog)
     {
         _authorizationContext = authorizationContext;
         _profiles = profiles;
+        _pickCatalog = pickCatalog;
     }
 
     /// <summary>
@@ -157,6 +160,49 @@ public class KidsController : ControllerBase
         }
 
         return await _profiles.DeleteAsync(userId, cancellationToken).ConfigureAwait(false) ? NoContent() : NotAKid();
+    }
+
+    /// <summary>
+    /// Lists the server's collections and playlists for the dashboard's picks chooser, whoever owns them.
+    /// </summary>
+    /// <param name="search">Text the name must contain.</param>
+    /// <param name="ids">Comma-separated item ids to resolve instead of searching; unknown ids are left out.</param>
+    /// <param name="limit">The most items to return when searching (default 50, at most 200).</param>
+    /// <response code="200">The collections and playlists, ordered by name when searching.</response>
+    /// <response code="400">An id is not a GUID.</response>
+    /// <response code="403">The caller is not an administrator.</response>
+    /// <returns>The candidates, or a refusal.</returns>
+    [HttpGet("Admin/PickCandidates")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<PickCandidateDto>>> GetPickCandidates([FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? limit)
+    {
+        var caller = await CallerContext.FromAsync(_authorizationContext, HttpContext).ConfigureAwait(false);
+        if (!ProfileAccess.CanMutate(caller))
+        {
+            return Forbid();
+        }
+
+        if (!string.IsNullOrWhiteSpace(ids))
+        {
+            var parsed = new List<Guid>();
+            foreach (var id in ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!Guid.TryParse(id, out var guid))
+                {
+                    return BadRequest(new ValidationProblemDetails(new Dictionary<string, string[]> { ["ids"] = [$"'{id}' is not an id."] }));
+                }
+
+                parsed.Add(guid);
+            }
+
+            return Ok(_pickCatalog.Resolve(parsed).Select(PickCandidateDto.From));
+        }
+
+        var max = Math.Clamp(limit ?? 50, 1, 200);
+        return Ok(_pickCatalog.Search(search, max).Select(PickCandidateDto.From));
     }
 
     private NotFoundObjectResult NotAKid()

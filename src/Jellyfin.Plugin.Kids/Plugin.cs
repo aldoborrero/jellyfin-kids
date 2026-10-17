@@ -39,13 +39,24 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()
     {
+        // Kids is the plugin's own settings page (same name as the plugin) and has a dashboard menu entry; KidsUser
+        // edits one kid and is reached from it. Each page loads its ES module through data-controller="__plugin/<Name>".
         return
         [
             new PluginPageInfo
             {
                 Name = Name,
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
-            }
+                DisplayName = "Kids",
+                EmbeddedResourcePath = Resource("kids.html"),
+                EnableInMainMenu = true,
+                MenuIcon = "child_care"
+            },
+            new PluginPageInfo { Name = "KidsJs", EmbeddedResourcePath = Resource("kids.js") },
+            new PluginPageInfo { Name = "KidsUser", EmbeddedResourcePath = Resource("kidsUser.html") },
+            new PluginPageInfo { Name = "KidsUserJs", EmbeddedResourcePath = Resource("kidsUser.js") }
         ];
     }
+
+    private string Resource(string fileName)
+        => string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.{1}", GetType().Namespace, fileName);
 }

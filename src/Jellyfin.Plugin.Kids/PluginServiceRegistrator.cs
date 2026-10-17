@@ -1,6 +1,10 @@
+using Jellyfin.Data.Events.Users;
+using Jellyfin.Plugin.Kids.Events;
+using Jellyfin.Plugin.Kids.Hosted;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,5 +27,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IKidsUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IPickCatalog, JellyfinPickCatalog>();
         serviceCollection.AddSingleton<KidProfileService>();
+        serviceCollection.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedConsumer>();
+        serviceCollection.AddHostedService<OrphanProfileSweeper>();
     }
 }

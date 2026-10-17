@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Kid settings</title>
+</head>
+<body>
+    <!-- Served without authentication: static markup only, everything is loaded by kidsUser.js -->
+    <div id="KidsUserPage" data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsUserJs">
+        <div data-role="content">
+            <div class="content-primary">
+                <p><a class="button-link" href="#/configurationpage?name=Kids">&larr; Kids</a></p>
+                <h2 class="kidsUserTitle">Kid settings</h2>
+
+                <p class="kidsMessage" hidden></p>
+
+                <div class="kidsConflict" hidden style="padding: 1em; margin-bottom: 1em; border: 1px solid #ff9800;">
+                    <p>These settings were changed somewhere else. Nothing was saved.</p>
+                    <button is="emby-button" type="button" class="raised kidsReload">
+                        <span>Load current settings</span>
+                    </button>
+                </div>
+
+                <form class="kidsUserForm" hidden>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" class="kidsSearchAllowed" />
+                            <span>Allow search</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" class="kidsAutoplayEnabled" />
+                            <span>Play the next episode automatically</span>
+                        </label>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="kidsAutoplayCap">Episodes in a row (1–10)</label>
+                        <input is="emby-input" type="number" id="kidsAutoplayCap" class="kidsAutoplayCap" min="1" max="10" step="1" />
+                        <div class="fieldDescription kidsError" data-error-for="AutoplayCap"></div>
+                    </div>
+
+                    <h3>Home sections</h3>
+                    <div class="fieldDescription">The order and the sections shown on the kids home screen.</div>
+                    <div class="kidsSections paperList"></div>
+                    <div class="fieldDescription kidsError" data-error-for="Sections"></div>
+
+                    <h3>Picked by your grown-ups</h3>
+                    <div class="fieldDescription">Collections and playlists shown in the "Picked" section, in order.</div>
+                    <div class="kidsPicks paperList"></div>
+                    <div class="fieldDescription kidsError" data-error-for="PickedItemIds"></div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="kidsPickSearch">Add a collection or playlist</label>
+                        <input is="emby-input" type="search" id="kidsPickSearch" class="kidsPickSearch" autocomplete="off" />
+                    </div>
+                    <div class="kidsPickResults paperList"></div>
+
+                    <p class="kidsFormError" hidden style="color: #ff6b6b;"></p>
+
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

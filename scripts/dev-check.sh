@@ -105,6 +105,35 @@ req "$alice" GET /Kids/Profiles
 check "i any signed-in user lists kids as ids and revisions" 200 \
   "(map(keys == [\"Revision\", \"UserId\"]) | all) and any(.[]; .UserId == \"$alice_id\")"
 
+# j. Dashboard pages are served anonymously, so they must hold no household data
+for page in Kids KidsJs KidsUser KidsUserJs; do
+  req - GET "/web/ConfigurationPage?name=$page"
+  check "j page $page is served" 200
+  if grep -Eiq '[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|alice|bob|"admin"' <<<"$body"; then
+    echo "FAIL j page $page contains household data"
+    failures=$((failures + 1))
+  fi
+done
+
+# k. Deleting a kid's Jellyfin user removes their profile
+req "$admin" GET /Users
+tmp_id=$(jq -r '.[] | select(.Name == "tmpkid") | .Id' <<<"$body")
+[[ -n $tmp_id ]] && req "$admin" DELETE "/Users/$tmp_id"
+req "$admin" POST /Users/New '{"Name":"tmpkid"}'
+tmp_id=$(jq -r .Id <<<"$body")
+req "$admin" PUT "/Kids/Users/$tmp_id/Profile" '{"Revision":0}'
+check "k admin marks tmpkid" 200
+req "$admin" DELETE "/Users/$tmp_id"
+check "k admin deletes tmpkid" 204
+req "$admin" GET /Kids/Profiles
+check "k tmpkid's profile is gone" 200 "all(.[]; .UserId != \"$tmp_id\")"
+
+# l. The picks chooser is for administrators only
+req "$alice" GET /Kids/Admin/PickCandidates
+check "l alice cannot list pick candidates" 403
+req "$admin" GET '/Kids/Admin/PickCandidates?limit=5'
+check "l admin lists pick candidates" 200 'type == "array"'
+
 # m. Reads keep working outside allowed hours (FR-014): give alice a schedule that excludes the current hour, then
 # always put her policy back
 req "$admin" GET "/Users/$alice_id"

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
+using Jellyfin.Extensions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
@@ -38,7 +39,9 @@ public sealed class JellyfinPickCatalog : IPickCatalog
         {
             IncludeItemTypes = [BaseItemKind.BoxSet, BaseItemKind.Playlist],
             Recursive = true,
-            NameContains = string.IsNullOrWhiteSpace(term) ? null : term.Trim(),
+            // NameContains is matched against CleanName, which is lowercased without diacritics, so clean the term the
+            // same way (BaseItemRepository.TranslateQuery, OrderMapper.GetCleanValue)
+            NameContains = string.IsNullOrWhiteSpace(term) ? null : term.Trim().RemoveDiacritics().ToLowerInvariant(),
             OrderBy = [(ItemSortBy.SortName, SortOrder.Ascending)],
             Limit = limit
         };
