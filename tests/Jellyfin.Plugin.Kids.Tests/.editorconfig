@@ -1,0 +1,16 @@
+# Test-only analyzer settings; TreatWarningsAsErrors stays on for this project.
+[*.cs]
+# Test method names use underscores (Method_State_Result)
+dotnet_diagnostic.CA1707.severity = none
+# xUnit test classes and methods are public by convention and need no XML docs
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.CS1591.severity = none
+# xUnit runs tests without a synchronization context, so ConfigureAwait only adds noise
+dotnet_diagnostic.CA2007.severity = none
+# Test helpers inspect the database with constant SQL, synchronously
+dotnet_diagnostic.CA1849.severity = none
+dotnet_diagnostic.CA2100.severity = none
+# Fakes expose plain mutable lists for test setup
+dotnet_diagnostic.CA1002.severity = none
+# Store calls take an optional token; these tests are short and need no cooperative cancellation
+dotnet_diagnostic.xUnit1051.severity = none
