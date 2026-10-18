@@ -434,13 +434,16 @@ NuGet packages (more detail in §6.4):
   `{valid:false}`. Throttling is per `(userId, deviceId)`: 5 tries, then 30 s, doubling up to 15 min.
 - Grants live only in memory and are dropped on restart.
 - `?ApiKey=` works for scripts. `api_key` does not.
+- **JSON**: Jellyfin's own formatters (feature 1). Responses are PascalCase by default and camelCase with
+  `Accept: application/json; profile="CamelCase"`; request bodies are case-insensitive. The field names below are
+  written in camelCase only as notation. ProblemDetails (400, 404) are always camelCase (`errors`).
 
 | Method and path | Auth | Request → response |
 |---|---|---|
 | `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","enforcement","schedules"], lockType:"NUMERIC"\|"REMOTE"\|null}`. Detection: 200 means plugin mode, 404 means local mode, a network error keeps the last known mode |
 | `GET /Kids/Profiles` | `[Authorize(IgnoreParentalControl)]` | → `[{userId, revision}]`, so the user switcher knows who the kids are. Ids only |
 | `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionDefaultMinutes?, strictLock}`, or 404 if the user is not a kid |
-| `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` → 200 with the new revision, or **409 with the current DTO** |
+| `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` (required; **0 marks the user as a kid**, 409 if already a kid) → 200 with the new revision, or **409 with the current DTO**. The revision is checked before validation, so stale and invalid gives 409 |
 | `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid (also deletes usage if `?purge=true`) |
 | `POST /Kids/Parent/Verify` | `[Authorize(IgnoreParentalControl)]` | `{code}` → `{valid:true, grant, expiresAt}`, or `{valid:false, retryAfterSeconds?}` |
 | `PUT /Kids/Parent/Lock` | admin, or grant plus the `current` code | `{lockType, code}` sets a new code. `{lockType, verifier}` imports one during migration, and only when none is set |
@@ -450,7 +453,8 @@ NuGet packages (more detail in §6.4):
 | `POST /Kids/Users/{userId}/WatchTime/Bonus` | admin or grant | `{minutes}` (1–240) → the new Status |
 | `PUT /Kids/Users/{userId}/Schedule` | admin or grant | `{schedules:[{dayOfWeek, startHour, endHour}]}`, written into `UserPolicy.AccessSchedules` |
 | `POST /Kids/Users/{userId}/Policy/Recommended` | admin or grant | `{maxParentalRating, enabledFolders[], hide:bool, dryRun:bool}` → a diff, which is applied unless `dryRun` |
-| `GET /Kids/Admin/Overview` | admin | for the config page: all users with kid flag, admin flag, policy summary, today's usage, and live sessions |
+| `GET /Kids/Admin/Overview` | admin | (feature 3; feature 1 uses Jellyfin's `GET /Users`) for the config page: all users with kid flag, admin flag, policy summary, today's usage, and live sessions |
+| `GET /Kids/Admin/PickCandidates` | admin | `?search=&ids=&limit=` → `[{id, name, type:"BoxSet"\|"Playlist"}]`, every collection and playlist on the server whoever owns them (Jellyfin's `/Items` hides other users' private playlists from admins), for the picks chooser |
 
 Errors use `ProblemDetails`. The gate filter's 403 body is `{"kids":"timeUp","remainingSeconds":0}` or
 `{"kids":"outsideSchedule"}`.
@@ -654,6 +658,12 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
 - **Plugin data is not in Jellyfin system backups.** An export feature is needed.
 - **12.x minor releases** might change controller or action names that the gate filter matches. Add a startup
   self-check that logs a warning if the expected actions are not found in `IActionDescriptorCollectionProvider`.
+- **Loading on 12.0 and 12.1 is not verified at runtime** (accepted risk, decided 2026-10-17 for feature 1). The
+  plugin compiles against the 12.0.0 packages with `targetAbi 12.0.0.0`, but the dev loop only runs 12.2
+  (nixpkgs). Revisit if a load failure is reported, or before a stable release.
+- **Bundled SQLite advisory**: `SQLitePCLRaw.lib.e_sqlite3` 2.1.11, which Jellyfin 12.2 ships with
+  Microsoft.Data.Sqlite 10.0.11, is flagged by GHSA-2m69-gcr7-jv3q. The plugin ships no SQLite of its own and uses
+  the server's; only the test project pins a newer 2.1.x.
 
 ## Corrections to the prior study
 

@@ -27,7 +27,7 @@ Feature 2 adds "admin or grant" (`X-Kids-Grant`) wherever this document says "ad
 | 401 | missing or invalid token | none |
 | 403 | signed in but not allowed (FR-016) | none |
 | 404 | the user is not a kid, or does not exist | ProblemDetails |
-| 400 | validation failed | ValidationProblemDetails, `Errors` keyed by field |
+| 400 | validation failed | ValidationProblemDetails, `errors` keyed by field. ProblemDetails are always camelCase (`title`, `status`, `errors`), whatever the JSON profile; the keys inside `errors` are field names as listed below |
 | 409 | revision conflict or already a kid | the current `KidProfile` |
 | 500 | store failure; never an empty success | none |
 
@@ -92,16 +92,16 @@ Marks a user as a kid (create) or replaces a kid's settings (update).
 ```
 
 - `Revision` is required:
-  - a missing `Revision` gets 400 with `Errors.Revision`; it is never treated as "create";
+  - a missing `Revision` gets 400 with `errors.Revision`; it is never treated as "create";
   - `0` means create (mark);
   - `N ≥ 1` means update based on revision N.
 - The settings fields are optional. Omitted ones take their **defaults** (see data-model). This is a full
   replacement, so clients send the whole profile when updating. `{"Revision":0}` marks a kid with the defaults.
 - `Sections[].Section` is a section name string, matched case-insensitively. An unknown name gets 400 with
-  `Errors["Sections[i]"]`.
+  `errors["Sections[i]"]`.
 - **Responses**:
   - **200**: the stored `KidProfile` (revision 1 after a create, N+1 after an update).
-  - **400**: validation failed (data-model "Validation"). Example: `{"Errors":{"AutoplayCap":["Must be between 1 and 10."],"PickedItemIds[1]":["Not a collection or playlist."]}}`.
+  - **400**: validation failed (data-model "Validation"). Example: `{"title":"One or more validation errors occurred.","status":400,"errors":{"AutoplayCap":["Must be between 1 and 10."],"PickedItemIds[1]":["Not a collection or playlist."]}}`.
   - **404**:
     - on create, the Jellyfin user does not exist;
     - on update, the user is not a kid (any more).
@@ -110,6 +110,14 @@ Marks a user as a kid (create) or replaces a kid's settings (update).
     - on update, `Revision` is not the current revision.
 
     Nothing is changed. The client merges or asks the parent, then retries with the returned revision.
+- **Order of checks**:
+  1. A missing `Revision` gets 400.
+  2. The caller must be admin, or gets 403.
+  3. Existence and revision are checked: 404, or 409.
+  4. Only then are the settings validated: 400.
+
+  So a request with a stale revision **and** invalid settings gets **409**, not 400: the client has to reload
+  anyway, and validates against the current profile when it retries.
 
 ## DELETE /Kids/Users/{userId}/Profile
 

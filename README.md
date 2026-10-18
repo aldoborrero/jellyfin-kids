@@ -29,11 +29,19 @@ The dev loop:
 Editing anything under `src/` (or `build.yaml`) rebuilds the plugin and restarts Jellyfin, since
 Jellyfin only loads plugins at startup.
 
+Tests:
+
 ```sh
-curl http://127.0.0.1:8096/Kids/Info
-curl -H "Authorization: MediaBrowser Client=\"dev\", Device=\"dev\", DeviceId=\"dev\", Version=\"0\", Token=\"$(cat .dev/admin.token)\"" \
-  http://127.0.0.1:8096/Plugins
+dotnet test                # unit tests (validation, revisions and conflicts, access rules, storage, cleanup)
+scripts/dev-check.sh       # checks against the running dev server: auth, 403/409/400 answers, cleanup, pages
 ```
+
+The dashboard page is at Dashboard → Kids once you sign in as `admin`.
+
+## API
+
+Clients detect the plugin with the anonymous `GET /Kids/Info`. The rest of the API is described in
+[specs/001-kids-plugin-foundation/contracts/kids-api-v1.md](specs/001-kids-plugin-foundation/contracts/kids-api-v1.md).
 
 Upstream sources used as reference (Jellyfin and plugins) are cloned into `.reference/`, which is not
 committed.

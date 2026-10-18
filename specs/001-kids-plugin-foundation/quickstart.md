@@ -97,3 +97,18 @@ and revisions (SC-008).
 
 These checks run only on 12.2, the dev loop's version. Loading on 12.0 and 12.1 relies on compiling against the
 12.0.0 packages and is not verified at runtime. This is an accepted risk (plan.md "Decisions", Q2).
+
+## Last run (2026-10-17, Jellyfin 12.2 dev loop started from the worktree)
+
+| Step | Result |
+|---|---|
+| §1 Unit tests | `dotnet build` with 0 warnings; `dotnet test`: 59 passed |
+| §2 `scripts/dev-check.sh` | Checks a–m all pass (27 checks), and the script can be run again |
+| §3 Allowed hours | Covered by check m: `/Users/Me` gets 403 while the kids endpoints answer 200; the policy is restored |
+| §4 Orphan sweep | Planted an orphan row, restarted Jellyfin: log "Removed 1 orphaned kid profile(s)", and it is gone from `/Kids/Profiles` |
+| §4 User deleted | Check k; log "Removed the kid profile of deleted user \"tmpkid\"" |
+| §5 Dashboard | Driven in Chromium through jellyfin-web 12.2 with a Playwright script kept outside the repo; 13/13 pass, no page errors. Covered: list, menu entry, admin warning, unmark with confirmation, editor load, missing pick, empty search, save of every field, add pick, conflict banner and reload, inline block for a limit of 11. Each flow took seconds; SC-002 and SC-003 were not timed with a person |
+| §5 Picks | Admin lists alice's private playlist through `PickCandidates`, while Jellyfin's own `/Items` hides it (research R9) |
+| §6 Restart | Profiles and revisions are unchanged after restarting Jellyfin |
+| Artifacts | The install folder holds only `Jellyfin.Plugin.Kids.dll`, `.pdb` and `meta.json`; no SQLite DLLs |
+| §7 12.0 and 12.1 | Not checked (accepted risk) |

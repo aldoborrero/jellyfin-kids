@@ -18,6 +18,10 @@
     <PackageReference Include="Jellyfin.Model" Version="12.0.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- Shipped with the server (Emby.Server.Implementations), so only compile against it -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -27,8 +31,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Configuration\configPage.html" />
-    <EmbeddedResource Include="Configuration\configPage.html" />
+    <InternalsVisibleTo Include="Jellyfin.Plugin.Kids.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dashboard pages, served by Jellyfin from the assembly -->
+    <None Remove="Configuration\*.html;Configuration\*.js" />
+    <EmbeddedResource Include="Configuration\*.html;Configuration\*.js" />
   </ItemGroup>
 
 </Project>
