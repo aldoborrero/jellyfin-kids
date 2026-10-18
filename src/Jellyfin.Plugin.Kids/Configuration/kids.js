@@ -1,4 +1,5 @@
-// The Kids dashboard page: lists Jellyfin users, marks and unmarks kids, warns about kids who are administrators.
+// The Kids dashboard page: the household parent lock, and the list of Jellyfin users where kids are marked and
+// unmarked, with a warning for kids who are administrators.
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none.
 
 const adminWarning = 'Administrators bypass every restriction. Use a non-admin account for this kid.';
@@ -135,6 +136,132 @@ function load(view) {
         .finally(() => Dashboard.hideLoadingMsg());
 }
 
+// Parent lock section. The code is never shown again after saving, and the page never asks for the verifier.
+
+const lockTypeNames = { NUMERIC: 'Digits', REMOTE: 'Remote buttons' };
+const lockSymbols = { NUMERIC: '0123456789', REMOTE: 'UDLR0123456789rgybpwf+-i' };
+
+function setText(node, text) {
+    node.textContent = text || '';
+    node.hidden = !text;
+}
+
+// Mirrors the server's rules (ParentCode): 4 to 32 symbols from the type's set, compared exactly
+function codeProblem(lockType, code, confirmation) {
+    if (code.length < 4 || code.length > 32) {
+        return 'The code must be 4 to 32 symbols.';
+    }
+
+    if ([...code].some((symbol) => !lockSymbols[lockType].includes(symbol))) {
+        return lockType === 'NUMERIC' ? 'Use digits only.' : 'Use only U D L R, 0–9 and r g y b p w f + - i.';
+    }
+
+    return code === confirmation ? null : 'The two codes are different.';
+}
+
+function renderLock(view, status) {
+    const hasLock = Boolean(status && status.LockType);
+    const statusLine = view.querySelector('.kidsLockStatus');
+    statusLine.textContent = hasLock
+        ? 'Parent lock: ' + (lockTypeNames[status.LockType] || status.LockType)
+            + (status.ChangedAt ? ', last changed ' + new Date(status.ChangedAt).toLocaleString() : '')
+        : 'No parent lock is set.';
+    view.querySelector('.kidsLockAdvice').hidden = hasLock;
+    // emby-button styles override the hidden attribute, so hide the button through its style
+    view.querySelector('.kidsLockRemove').style.display = hasLock ? '' : 'none';
+    if (hasLock) {
+        view.querySelector('.kidsLockType').value = status.LockType;
+    }
+
+    updateRemoteHelp(view);
+}
+
+function updateRemoteHelp(view) {
+    view.querySelector('.kidsLockRemoteHelp').hidden = view.querySelector('.kidsLockType').value !== 'REMOTE';
+}
+
+function loadLock(view) {
+    setText(view.querySelector('.kidsLockError'), null);
+    return request('GET', 'Kids/Parent/Lock')
+        .then((status) => renderLock(view, status))
+        .catch(() => {
+            // Never read a failure as "no lock"
+            view.querySelector('.kidsLockStatus').textContent = '';
+            setText(view.querySelector('.kidsLockError'), 'Could not load the parent lock. Check the server log.');
+        });
+}
+
+function saveLock(view) {
+    const lockType = view.querySelector('.kidsLockType').value;
+    const codeInput = view.querySelector('.kidsLockCode');
+    const confirmInput = view.querySelector('.kidsLockConfirm');
+    const message = view.querySelector('.kidsLockMessage');
+    const problem = codeProblem(lockType, codeInput.value, confirmInput.value);
+    if (problem) {
+        message.style.color = '#ff6b6b';
+        setText(message, problem);
+        return;
+    }
+
+    Dashboard.showLoadingMsg();
+    request('PUT', 'Kids/Parent/Lock', { LockType: lockType, Code: codeInput.value })
+        .then((status) => {
+            codeInput.value = '';
+            confirmInput.value = '';
+            renderLock(view, status);
+            message.style.color = '';
+            setText(message, 'Saved.');
+        })
+        .catch((response) => {
+            message.style.color = '#ff6b6b';
+            if (response && response.status === 400 && typeof response.json === 'function') {
+                return response.json().then((problemDetails) => {
+                    const errors = (problemDetails && problemDetails.errors) || {};
+                    const first = errors.Code || errors.LockType;
+                    setText(message, first ? first[0] : 'The code was refused.');
+                }, () => setText(message, 'The code was refused.'));
+            }
+
+            setText(message, null);
+            Dashboard.alert({ title: 'Kids', message: 'Could not save the parent lock.' });
+            return undefined;
+        })
+        .finally(() => Dashboard.hideLoadingMsg());
+}
+
+function removeLock(view) {
+    Dashboard.confirm('Remove the parent lock? TVs will need an administrator sign-in to change kids settings.', 'Kids', (confirmed) => {
+        if (!confirmed) {
+            return;
+        }
+
+        Dashboard.showLoadingMsg();
+        request('DELETE', 'Kids/Parent/Lock')
+            .then(() => renderLock(view, null))
+            .catch((response) => {
+                if (response && response.status === 404) {
+                    renderLock(view, null);
+                    return;
+                }
+
+                Dashboard.alert({ title: 'Kids', message: 'Could not remove the parent lock.' });
+            })
+            .finally(() => {
+                setText(view.querySelector('.kidsLockMessage'), null);
+                Dashboard.hideLoadingMsg();
+            });
+    });
+}
+
 export default function (view) {
-    view.addEventListener('viewshow', () => load(view));
+    view.querySelector('.kidsLockForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveLock(view);
+    });
+    view.querySelector('.kidsLockRemove').addEventListener('click', () => removeLock(view));
+    view.querySelector('.kidsLockType').addEventListener('change', () => updateRemoteHelp(view));
+    view.addEventListener('viewshow', () => {
+        loadLock(view);
+        load(view);
+    });
 }

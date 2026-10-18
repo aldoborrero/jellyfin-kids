@@ -8,7 +8,6 @@ using Jellyfin.Extensions.Json;
 using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Profiles;
 using MediaBrowser.Common.Api;
-using MediaBrowser.Controller.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +19,8 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// </summary>
 /// <remarks>
 /// Authenticated endpoints use <see cref="Policies.IgnoreParentalControl"/> so they keep working outside a kid's
-/// allowed hours, and decide self, admin or forbidden in <see cref="ProfileAccess"/>. Refusals are 403, never 401.
+/// allowed hours, and decide self, admin (or parent grant) or forbidden in <see cref="ProfileAccess"/>. Refusals are
+/// 403, never 401.
 /// </remarks>
 [ApiController]
 [Route("Kids")]
@@ -28,19 +28,19 @@ namespace Jellyfin.Plugin.Kids.Api;
 [Produces(MediaTypeNames.Application.Json, JsonDefaults.CamelCaseMediaType, JsonDefaults.PascalCaseMediaType)]
 public class KidsController : ControllerBase
 {
-    private readonly IAuthorizationContext _authorizationContext;
+    private readonly CallerResolver _callers;
     private readonly KidProfileService _profiles;
     private readonly IPickCatalog _pickCatalog;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidsController"/> class.
     /// </summary>
-    /// <param name="authorizationContext">Jellyfin's authorization context.</param>
+    /// <param name="callers">Resolves the caller and any parent grant.</param>
     /// <param name="profiles">The kid profile service.</param>
     /// <param name="pickCatalog">The server's collections and playlists.</param>
-    public KidsController(IAuthorizationContext authorizationContext, KidProfileService profiles, IPickCatalog pickCatalog)
+    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog)
     {
-        _authorizationContext = authorizationContext;
+        _callers = callers;
         _profiles = profiles;
         _pickCatalog = pickCatalog;
     }
@@ -54,7 +54,7 @@ public class KidsController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<KidsInfo> GetInfo()
-        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: ["profiles"], LockType: null);
+        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: ["profiles", "parentLock"]);
 
     /// <summary>
     /// Lists the kids, so a user switcher can tell who they are.
@@ -87,7 +87,7 @@ public class KidsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<KidProfileDto>> GetProfile([FromRoute] Guid userId, CancellationToken cancellationToken)
     {
-        var caller = await CallerContext.FromAsync(_authorizationContext, HttpContext).ConfigureAwait(false);
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
         if (!ProfileAccess.CanRead(caller, userId))
         {
             return Forbid();
@@ -105,7 +105,7 @@ public class KidsController : ControllerBase
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <response code="200">The stored profile.</response>
     /// <response code="400">Invalid settings, keyed by field.</response>
-    /// <response code="403">The caller is not an administrator.</response>
+    /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
     /// <response code="404">The user does not exist (create) or is not a kid (update).</response>
     /// <response code="409">Already a kid, or a stale revision; the body is the current profile.</response>
     /// <returns>The stored profile, or the current one on a conflict.</returns>
@@ -120,7 +120,7 @@ public class KidsController : ControllerBase
     public async Task<ActionResult<KidProfileDto>> PutProfile([FromRoute] Guid userId, [FromBody] KidProfileUpdate update, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(update);
-        var caller = await CallerContext.FromAsync(_authorizationContext, HttpContext).ConfigureAwait(false);
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
         if (!ProfileAccess.CanMutate(caller))
         {
             return Forbid();
@@ -143,7 +143,7 @@ public class KidsController : ControllerBase
     /// <param name="userId">The kid's user id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <response code="204">The kid was unmarked.</response>
-    /// <response code="403">The caller is not an administrator.</response>
+    /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
     /// <response code="404">The user is not a kid.</response>
     /// <returns>No content.</returns>
     [HttpDelete("Users/{userId}/Profile")]
@@ -153,7 +153,7 @@ public class KidsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult> DeleteProfile([FromRoute] Guid userId, CancellationToken cancellationToken)
     {
-        var caller = await CallerContext.FromAsync(_authorizationContext, HttpContext).ConfigureAwait(false);
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
         if (!ProfileAccess.CanMutate(caller))
         {
             return Forbid();
@@ -179,8 +179,9 @@ public class KidsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IEnumerable<PickCandidateDto>>> GetPickCandidates([FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? limit)
     {
-        var caller = await CallerContext.FromAsync(_authorizationContext, HttpContext).ConfigureAwait(false);
-        if (!ProfileAccess.CanMutate(caller))
+        // Administrators only: a parent grant unlocks profile changes, not this dashboard data
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        if (!caller.IsAdmin)
         {
             return Forbid();
         }

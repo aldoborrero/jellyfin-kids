@@ -243,7 +243,8 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
   export and import of plugin state from the config page (phase 4).
 - **Recommendation**: a single SQLite file `kids.db` under `DataFolderPath`, with `WAL` and a single writer, holding:
   - `kid_profile(user_id PK, revision, json)`;
-  - `household(key PK, value)` for the verifier, lock type and settings revision;
+  - `parent_lock(id PK CHECK (id = 1), lock_type, verifier, changed_at)` for the household lock (schema v2, feature 2;
+    a single row enforced by the table, instead of a generic `household(key, value)`);
   - `usage_day(user_id, local_date, used_ms, PK(user_id, local_date))`;
   - `bonus(id PK, user_id, local_date, minutes, granted_by, created_at)`;
   - optionally `usage_segment` for idempotent client reports and history.
@@ -368,7 +369,8 @@ It then writes the policy back. It shows a diff before applying, and warns when:
 
 ### 3.6 Parent lock
 
-- The server stores `{lockType: NUMERIC|REMOTE, verifier}` per household, with an optional per-kid override later.
+- The server stores `{lockType: NUMERIC|REMOTE, verifier}` per household in `kids.db` (`parent_lock`, one row), with
+  an optional per-kid override later.
 - The format is the app's `pbkdf2-sha256$<iter>$<saltHex>$<hashHex>` (`app/.../kids/gate/PasscodeHasher.kt:11-48`).
   It is a single-block PBKDF2-HMAC-SHA256 with 120 000 iterations and a 16-byte salt, and equals
   `Rfc2898DeriveBytes.Pbkdf2(utf8(code), salt, iter, SHA256, 32)`. Compare with `CryptographicOperations.FixedTimeEquals`.
@@ -388,18 +390,19 @@ Jellyfin.Plugin.Kids (assembly; plugin name "Kids"; guid d62ee188-270c-49d8-b7b9
 ├── Storage/KidsDatabase.cs        Microsoft.Data.Sqlite, kids.db in DataFolderPath, schema migrations by user_version
 ├── Services/
 │   ├── KidProfileService          CRUD with revision (optimistic concurrency), validation (picks are BoxSet/Playlist)
-│   ├── ParentLockService          verifier storage, PBKDF2 verify, lock type
+│   ├── ParentLockService          (ParentLock/) verifier storage, PBKDF2 verify, lock type; ThrottleService beside it
 │   ├── GrantService               in-memory grants: 256-bit random, bound to (deviceId, issuing userId), TTL 5 min; throttling
 │   ├── AllowanceService           daily budget, usage, bonus, remaining; day boundary in server local time
 │   ├── PolicyHelper               read-modify-write UserPolicy: recommended policy, AccessSchedules editor, strict-lock apply/restore
-│   └── CallerContext              wraps IAuthorizationContext: IsAdmin (role or API key), UserId, DeviceId
+│   └── CallerContext              (Auth/) wraps IAuthorizationContext: IsAdmin (role or API key), UserId; CallerResolver adds
+│                                  the token's registered device (IDeviceDirectory) and the X-Kids-Grant check
 ├── Hosted/
 │   ├── PlaybackTracker            IHostedService; subscribes ISessionManager.PlaybackStart/Progress/Stopped; accumulates usage
 │   └── EnforcementLoop            IHostedService; 5 s timer: warnings, Stop + DisplayMessage, transcode kill, schedule-close stop
 ├── Enforcement/PlaybackGateFilter IAsyncActionFilter via Configure<MvcOptions>; 403 {"kids":"timeUp"} for gated actions
 ├── Events/UserDeletedConsumer     IEventConsumer<UserDeletedEventArgs>: drop profile/usage rows
 ├── Tasks/PruneUsageTask           IScheduledTask: prune usage/bonus older than N days, reconcile strict locks
-└── Api/KidsController         route prefix /Kids
+└── Api/                       KidsController (route prefix /Kids) and ParentLockController (/Kids/Parent)
 ```
 
 Registrator:
@@ -431,7 +434,10 @@ NuGet packages (more detail in §6.4):
 - **Mutations**: an admin token or API key, **or** a parent grant in `X-Kids-Grant`, valid for the same `DeviceId`
   that obtained it. A kid token alone is never enough, even for its own user id.
 - `Parent/Verify` never returns 401, because clients treat 401 as session expiry. A wrong code returns 200 with
-  `{valid:false}`. Throttling is per `(userId, deviceId)`: 5 tries, then 30 s, doubling up to 15 min.
+  `{valid:false}`. Throttling is per `(userId, deviceId)`: 5 tries, then 30 s, doubling up to 15 min, plus a cap of
+  20 wrong tries per user across all devices. The `deviceId` is the device Jellyfin registered for the token, not the
+  request header, which Jellyfin does not check against the token (`AuthorizationContext.cs:144-147`); grants are
+  bound to the same `(userId, deviceId)`.
 - Grants live only in memory and are dropped on restart.
 - `?ApiKey=` works for scripts. `api_key` does not.
 - **JSON**: Jellyfin's own formatters (feature 1). Responses are PascalCase by default and camelCase with
@@ -440,13 +446,15 @@ NuGet packages (more detail in §6.4):
 
 | Method and path | Auth | Request → response |
 |---|---|---|
-| `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","enforcement","schedules"], lockType:"NUMERIC"\|"REMOTE"\|null}`. Detection: 200 means plugin mode, 404 means local mode, a network error keeps the last known mode |
+| `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","enforcement","schedules"]}`. Detection: 200 means plugin mode, 404 means local mode, a network error keeps the last known mode. Nothing per-household, so no lock type (constitution IV; decided 2026-10-18 in feature 2): clients read it from `GET /Kids/Parent/Lock` after signing in |
 | `GET /Kids/Profiles` | `[Authorize(IgnoreParentalControl)]` | → `[{userId, revision}]`, so the user switcher knows who the kids are. Ids only |
 | `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionDefaultMinutes?, strictLock}`, or 404 if the user is not a kid |
 | `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` (required; **0 marks the user as a kid**, 409 if already a kid) → 200 with the new revision, or **409 with the current DTO**. The revision is checked before validation, so stale and invalid gives 409 |
 | `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid (also deletes usage if `?purge=true`) |
 | `POST /Kids/Parent/Verify` | `[Authorize(IgnoreParentalControl)]` | `{code}` → `{valid:true, grant, expiresAt}`, or `{valid:false, retryAfterSeconds?}` |
-| `PUT /Kids/Parent/Lock` | admin, or grant plus the `current` code | `{lockType, code}` sets a new code. `{lockType, verifier}` imports one during migration, and only when none is set |
+| `GET /Kids/Parent/Lock` | `[Authorize(IgnoreParentalControl)]`, any signed-in user | → `{lockType:"NUMERIC"\|"REMOTE"\|null, changedAt?}`, so the client draws the right gate. Nothing else about the lock |
+| `PUT /Kids/Parent/Lock` | admin, or grant plus the `current` code | `{lockType, code}` sets a new code. `{lockType, verifier}` imports one during migration, and only when none is set (admin only, as is setting the first lock) |
+| `DELETE /Kids/Parent/Lock` | admin | removes the household lock and drops every grant |
 | `GET /Kids/Parent/Verifier` | admin or grant | → `{lockType, verifier}`, cached by the device for offline unlock |
 | `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, withinSchedule, nextAllowedAt?, serverTime, warnAtSeconds:[300,60]}`. The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
 | `POST /Kids/Users/{userId}/WatchTime/Report` | self | `{segments:[{id, startedAt, seconds}]}`, add-only and idempotent by `id`, for offline playback |
@@ -637,6 +645,9 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
    borrowing from Playback Reporting, Jellyfin-Enhanced and intro-skipper.
 
 **Risks**
+- **Jellyfin does not bind the header DeviceId to the token** (`AuthorizationContext.cs:144-147`): a token can claim
+  any `DeviceId`. The plugin resolves the device from the token's registered device row (`IDeviceManager`) for
+  throttling and grant binding, and caps wrong codes per user across devices (feature 2, research R2).
 - **The gate filter on playback actions is unproven.** Global MVC filters from plugins work (Jellyfin-Enhanced), but
   gating `PlaybackInfo` and HLS specifically must be proven by the feature 4 spike. The fallback is stop-only
   enforcement plus the opt-in strict lock.

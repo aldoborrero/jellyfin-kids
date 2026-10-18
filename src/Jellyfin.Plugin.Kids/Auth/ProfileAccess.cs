@@ -3,7 +3,7 @@ using System;
 namespace Jellyfin.Plugin.Kids.Auth;
 
 /// <summary>
-/// Who may read and change kid profiles. The single place for these rules (feature 2 adds parent grants here).
+/// Who may read and change kid profiles. The single place for these rules.
 /// </summary>
 public static class ProfileAccess
 {
@@ -17,10 +17,11 @@ public static class ProfileAccess
         => caller.IsAdmin || (caller.UserId != Guid.Empty && caller.UserId == userId);
 
     /// <summary>
-    /// Whether the caller may mark, unmark or change kids: administrators and API keys only. A kid's own token is
-    /// never enough, even for their own profile.
+    /// Whether the caller may mark, unmark or change kids: administrators, API keys and holders of a parent grant
+    /// (obtained on this device with the household code). A kid's own token is never enough, even for their own
+    /// profile.
     /// </summary>
     /// <param name="caller">The caller.</param>
     /// <returns><c>true</c> if allowed.</returns>
-    public static bool CanMutate(CallerContext caller) => caller.IsAdmin;
+    public static bool CanMutate(CallerContext caller) => caller.IsAdmin || caller.HasGrant;
 }

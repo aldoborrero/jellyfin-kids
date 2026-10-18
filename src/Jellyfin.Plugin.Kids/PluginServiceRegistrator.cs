@@ -1,12 +1,16 @@
+using System;
 using Jellyfin.Data.Events.Users;
+using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Events;
 using Jellyfin.Plugin.Kids.Hosted;
+using Jellyfin.Plugin.Kids.ParentLock;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Jellyfin.Plugin.Kids;
 
@@ -22,11 +26,18 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<KidsDatabase>();
         serviceCollection.AddSingleton<KidProfileStore>();
         serviceCollection.AddSingleton<IKidsUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IPickCatalog, JellyfinPickCatalog>();
         serviceCollection.AddSingleton<KidProfileService>();
+        serviceCollection.AddSingleton<ParentLockStore>();
+        serviceCollection.AddSingleton<IDeviceDirectory, JellyfinDeviceDirectory>();
+        serviceCollection.AddSingleton<GrantService>();
+        serviceCollection.AddSingleton<ThrottleService>();
+        serviceCollection.AddSingleton<ParentLockService>();
+        serviceCollection.AddScoped<CallerResolver>();
         serviceCollection.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedConsumer>();
         serviceCollection.AddHostedService<OrphanProfileSweeper>();
     }
