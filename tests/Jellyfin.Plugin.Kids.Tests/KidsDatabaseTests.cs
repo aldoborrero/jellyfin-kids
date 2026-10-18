@@ -72,6 +72,33 @@ public sealed class KidsDatabaseTests : IDisposable
     }
 
     [Fact]
+    public void EnsureInitialized_FromVersion1_AddsParentLockAndKeepsProfiles()
+    {
+        Directory.CreateDirectory(_folder.Path);
+        var path = Path.Combine(_folder.Path, KidsDatabase.FileName);
+        Execute(path, """
+            CREATE TABLE kid_profile (
+              user_id    TEXT    PRIMARY KEY,
+              revision   INTEGER NOT NULL CHECK (revision >= 1),
+              settings   TEXT    NOT NULL,
+              created_at TEXT    NOT NULL,
+              updated_at TEXT    NOT NULL
+            );
+            INSERT INTO kid_profile VALUES ('a', 3, '{}', 'x', 'x'), ('b', 1, '{"SearchAllowed":true}', 'x', 'x');
+            PRAGMA user_version = 1;
+            """);
+
+        var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
+
+        Assert.True(db.EnsureInitialized());
+        Assert.Equal(2L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(2L, ReadScalar<long>(path, "SELECT count(*) FROM kid_profile"));
+        Assert.Equal(3L, ReadScalar<long>(path, "SELECT revision FROM kid_profile WHERE user_id = 'a'"));
+        Assert.Equal("{\"SearchAllowed\":true}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
+        Assert.Equal(0L, ReadScalar<long>(path, "SELECT count(*) FROM parent_lock"));
+    }
+
+    [Fact]
     public void OpenConnection_UsesPrivateCacheNoPoolingAndWal()
     {
         var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);

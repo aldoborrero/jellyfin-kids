@@ -18,7 +18,9 @@ The examples below are PascalCase.
 | self | the token's user is the `{userId}` in the path |
 | admin | a user with the administrator permission, or an API key |
 
-Feature 2 adds "admin or grant" (`X-Kids-Grant`) wherever this document says "admin" for mutations.
+Since feature 2, mutations accept "admin or grant": a parent grant in `X-Kids-Grant`, valid for the same user and
+registered device. See [the feature 2 contract](../../002-kids-parent-lock/contracts/kids-api-v1-parent-lock.md).
+`GET /Kids/Admin/PickCandidates` stays administrator only.
 
 **Status codes**
 
@@ -38,7 +40,8 @@ Authenticated endpoints use Jellyfin's `IgnoreParentalControl` policy, so they w
 
 - **Auth**: anonymous.
 - **200**: `{"PluginVersion":"0.0.1.0","ApiVersion":1,"Features":["profiles"]}`.
-  - `LockType` (`"NUMERIC"` or `"REMOTE"`) appears from feature 2 when a lock is set.
+  - There is no `LockType`: feature 2 dropped it from `Info` (nothing per-household in anonymous answers). Clients
+    read it from `GET /Kids/Parent/Lock` after signing in. Feature 2 adds `parentLock` to `Features`.
   - Clients detect capabilities by `Features`: 200 means plugin mode; 404 means no plugin (local mode).
   - The body contains nothing household-specific (FR-003).
 

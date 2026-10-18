@@ -34,10 +34,11 @@ public class ProfileAccessTests
     }
 
     [Fact]
-    public void CanMutate_OnlyAdminAndApiKey()
+    public void CanMutate_AdminApiKeyOrGrant()
     {
         Assert.True(ProfileAccess.CanMutate(_admin));
         Assert.True(ProfileAccess.CanMutate(_apiKey));
+        Assert.True(ProfileAccess.CanMutate(_self with { DeviceKey = "device:a", HasGrant = true }));
         Assert.False(ProfileAccess.CanMutate(_self));
         Assert.False(ProfileAccess.CanMutate(_other));
     }

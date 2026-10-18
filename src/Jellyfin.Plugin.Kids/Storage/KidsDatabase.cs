@@ -27,7 +27,7 @@ public sealed class KidsDatabase : IDisposable
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
     /// </summary>
-    public const long SchemaVersion = 1;
+    public const long SchemaVersion = 2;
 
     // Each step moves the schema from version (index) to version (index + 1)
     private static readonly string[] _migrations =
@@ -39,6 +39,14 @@ public sealed class KidsDatabase : IDisposable
           settings   TEXT    NOT NULL,
           created_at TEXT    NOT NULL,
           updated_at TEXT    NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE parent_lock (
+          id         INTEGER PRIMARY KEY CHECK (id = 1),
+          lock_type  TEXT    NOT NULL CHECK (lock_type IN ('NUMERIC','REMOTE')),
+          verifier   TEXT    NOT NULL,
+          changed_at TEXT    NOT NULL
         );
         """
     ];
@@ -150,7 +158,7 @@ public sealed class KidsDatabase : IDisposable
             if (version > SchemaVersion)
             {
                 _logger.LogError(
-                    "Kids database {Path} has schema version {Version}, newer than this plugin supports ({Supported}); kid profiles are unavailable",
+                    "Kids database {Path} has schema version {Version}, newer than this plugin supports ({Supported}); kids data is unavailable",
                     DatabasePath,
                     version,
                     SchemaVersion);
@@ -176,7 +184,7 @@ public sealed class KidsDatabase : IDisposable
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
-            _logger.LogError(ex, "Cannot open the kids database {Path}; kid profiles are unavailable", DatabasePath);
+            _logger.LogError(ex, "Cannot open the kids database {Path}; kids data is unavailable", DatabasePath);
             return false;
         }
     }
