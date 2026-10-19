@@ -5,7 +5,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 dev=${JELLYFIN_KIDS_DEV:-$root/.dev}
-url=${JELLYFIN_URL:-http://127.0.0.1:8096}
+url=${JELLYFIN_URL:-http://127.0.0.1:${JELLYFIN_KIDS_PORT:-8096}}
 admin_user=${DEV_ADMIN_USER:-admin}
 admin_password=${DEV_ADMIN_PASSWORD:-admin}
 kids=(${DEV_KIDS:-alice bob})

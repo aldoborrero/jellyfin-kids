@@ -311,6 +311,19 @@ change admin-owned state, or risk lockouts if the plugin breaks).
 - Repeat every tick while the session keeps reporting playback. This catches clients that ignore Stop, and pairs
   with the block in §3.3.
 
+**Built in feature 5 (spec `005-kids-enforcement`), revised from the above:**
+- The decision runs in memory on Jellyfin's 1 s progress tick (`EnforcementState`, fed by `PlaybackTracker`), with no
+  per-kid timers (review §D.3).
+- Per denial and session, once: a modal `DisplayMessage`, Stop about 5 s later, `KillTranscodingJobs`, the live
+  stream close, `HttpContext.Abort()` on the kid's in-flight deliveries, and the end of the playback on the server
+  (`OnPlaybackStopped`, as the idle sweep does), so the tick and the transcode pings stop. Only a real report from the
+  denied session, or the 30 s sweep, repeats the stop part, at most every 10 s. One info log line per denial and per
+  stopped session (the repro's fork logged one every ~10 s).
+- Warnings at 5 and 1 minutes are toasts (`TimeoutMs` 10 s) for the allowance, the sitting and the allowed hours.
+- The spike (spec 005 research R1): the abort cut a socket-less curl download within 4 s, and jellyfin-web in
+  Chromium, when it ignores Stop, kept playing ~35 s from what it had buffered before showing "Playback of this media
+  is not allowed".
+
 ### 3.3 Blocking new playback for out-of-time kids
 
 What has to be gated:
@@ -337,13 +350,22 @@ just yet").
   client, which is attractive for non-Wholphin clients.
 - Wholphin reacts to 403 `timeUp` by showing the Time's up screen, and also learns state from `GET /Kids/Status`.
 
+**Built in feature 5:** A, but narrower than a global filter. An `IApplicationModelConvention` attaches one
+`IAsyncResourceFilter` to the 22 playback actions only (PlaybackInfo GET and POST, `LiveStreams/Open`, UniversalAudio,
+the HLS master, variant, live and segment routes, the legacy HLS routes, `Videos`/`Audio` streams, `Items/{id}/File`,
+`Items/{id}/Download`, the two LiveTv file routes; spec 005 research R3), plus any action Jellyfin marks as producing
+video, audio or HLS. PlaybackInfo answers 200 `ErrorCode: NotAllowed`; the rest 403 with
+`X-Application-Error-Code: PlaybackNotAllowed` and `X-Kids-Reason` (`timeUp`, `outsideSchedule`, `sessionLimit`),
+never `ParentalControl`. `Sessions/Playing*` is not gated. Behind `EnforcementEnabled`, off by default. A startup
+self-check reports the guarded routes in `GET /Kids/Info` (`Enforcement.Gate`). C (the strict lock) is not built.
+
 ### 3.4 Bedtime and allowed hours
 
 **Native `AccessSchedules`, with no plugin enforcement.** The plugin only provides:
 - a friendlier editor in the config page and the Wholphin parent menu, which writes through `UpdatePolicyAsync` after
   a read-modify-write, and requires a grant or admin;
-- (feature 5) a `withinSchedule` flag and `nextAllowedAt` in `Status`, computed with the same rule as
-  `UserEntityExtensions.IsParentalScheduleAllowed`.
+- (planned for feature 5, built differently) Status reports `DeniedReason: outsideSchedule` while enforcement is on,
+  from `UserEntityExtensions.IsParentalScheduleAllowed`; a `withinSchedule` flag and `nextAllowedAt` were not added.
 
 Caveats:
 - the schedule uses **server** local time and has inclusive ends;
@@ -352,6 +374,12 @@ Caveats:
 
 The allowance tracker should also stop playing sessions when the schedule closes. This reuses §3.2 at little extra
 cost.
+
+**Built in feature 5:** with enforcement on, the tick evaluates Jellyfin's own `IsParentalScheduleAllowed` on a cached
+`User` (refreshed on `OnUserUpdated` and every 60 s), warns 5 and 1 minutes before the window closes, and runs the
+§3.2 stop at the boundary. The filter also refuses the anonymous stream routes after hours, which the core does not.
+Stock 12.2 keeps direct play running and HLS ffmpeg alive for ~10 minutes after the window ends
+([repro](repro-schedule-playback.md)).
 
 ### 3.5 Content restrictions
 
@@ -466,7 +494,7 @@ NuGet packages (more detail in §6.4):
 | `PUT /Kids/Parent/Lock` | admin, or grant plus the `current` code | `{lockType, code}` sets a new code. `{lockType, verifier}` imports one during migration, and only when none is set (admin only, as is setting the first lock) |
 | `DELETE /Kids/Parent/Lock` | admin | removes the household lock and drops every grant |
 | `GET /Kids/Parent/Verifier` | admin or grant | → `{lockType, verifier}`, cached by the device for offline unlock |
-| `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, serverTime, nextDayStartsAt, warnAtSeconds:[300,60]}` (feature 3; `withinSchedule` and `nextAllowedAt?` are added by feature 5). The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
+| `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, serverTime, nextDayStartsAt, warnAtSeconds:[300,60]}` (feature 3; feature 5 adds `enforced`, `deniedReason?`, `deniedUntil?` and the sitting fields, spec 005 contract). The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
 | `POST /Kids/Users/{userId}/WatchTime/Report` | self | `{segments:[{id, startedAt, seconds}]}`, add-only and idempotent by `id`, for offline playback |
 | `POST /Kids/Users/{userId}/WatchTime/Bonus` | admin or grant | `{minutes}` (1–240) → the new Status |
 | `PUT /Kids/Users/{userId}/Schedule` | admin or grant | `{schedules:[{dayOfWeek, startHour, endHour}]}`, written into `UserPolicy.AccessSchedules` |
@@ -632,7 +660,7 @@ Verified against the 12.2 sources. Paths are in `.reference/jellyfin`.
 | 1 | `kids-plugin-foundation` | Plugin skeleton, SQLite store, `Info`, `CallerContext`, profiles CRUD with revisions, user-deleted cleanup, admin config page that lists users, marks kids and warns on admin kids | Plugin loads on 12.0 and 12.2; anonymous `Info` returns 200; a kid token gets 403 on `PUT Profile`; concurrent PUT returns 409 with the current DTO; deleting a user removes the profile |
 | 2 | `kids-parent-lock` | Lock storage (NUMERIC or REMOTE), verifier import, `Verify` with grants and throttling, `Verifier` for offline use, lock management in the config page | An app verifier validates server-side unchanged; a wrong code returns 200 `valid:false` and never 401; the 6th attempt is throttled; a grant from device A is rejected on device B; grants vanish on restart |
 | 3 | `kids-allowance-tracking` | `PlaybackTracker`, daily usage, bonus, `Status`, `Report` (add-only), allowance in the profile and config page, prune task | 10 min of playback from jellyfin-web counts within ±30 s; paused time is not counted; two concurrent devices both count; a client report cannot reduce usage; the day resets at the configured "day starts at" hour |
-| 4 | `kids-enforcement` | Spike: verify a plugin MVC filter fires on PlaybackInfo and HLS. Then `EnforcementLoop` (warnings, Stop, transcode kill) and `PlaybackGateFilter` (403 `timeUp` or `outsideSchedule`), with stops when the schedule closes, behind a config flag | Expiry stops Wholphin and jellyfin-web within 10 s; a new play attempt gets 403 with the JSON body; a bonus re-enables playback immediately; an admin or API key is never blocked; disabling the plugin removes all blocking |
+| 4 | `kids-enforcement` (built as spec 005, plugin 0.0.5.0) | Spike: verify a plugin MVC filter fires on PlaybackInfo and HLS. Then `EnforcementLoop` (warnings, Stop, transcode kill) and `PlaybackGateFilter` (403 `timeUp` or `outsideSchedule`), with stops when the schedule closes, behind a config flag | Expiry stops Wholphin and jellyfin-web within 10 s; a new play attempt gets 403 with the JSON body; a bonus re-enables playback immediately; an admin or API key is never blocked; disabling the plugin removes all blocking |
 | 5 | `kids-policy-helpers` | Recommended policy with dry-run diff, `AccessSchedules` editor (config page plus endpoint), share picked playlists with the kid, optional strict lock (schedule rewrite) with reconciler | Dry run shows the diff without writing; apply changes only the listed fields; the strict lock is restored after restart and when time is added; the schedule editor round-trips the existing entries |
 | 6 | `kids-extras` | Per-kid lock override, activity history, export and import of plugin state (not covered by system backup), optional server-side session cap, optional 10.11 build | Export, wipe and import restore profiles and lock; history lists today's items per kid |
 
@@ -661,10 +689,13 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
 - **Jellyfin does not bind the header DeviceId to the token** (`AuthorizationContext.cs:144-147`): a token can claim
   any `DeviceId`. The plugin resolves the device from the token's registered device row (`IDeviceManager`) for
   throttling and grant binding, and caps wrong codes per user across devices (feature 2, research R2).
-- **The gate filter on playback actions is unproven.** Global MVC filters from plugins work (Jellyfin-Enhanced), but
+- **The gate filter on playback actions** (proven in feature 5: a convention-attached filter fires on every guarded
+  route in 12.2, anonymous ones included when a token is in the query). Earlier note: global MVC filters from plugins
+  work (Jellyfin-Enhanced), but
   gating `PlaybackInfo` and HLS specifically must be proven by the feature 4 spike. The fallback is stop-only
   enforcement plus the opt-in strict lock.
-- **Direct play cannot be cut by the server.** Logout, ending the session and policy changes don't stop current
+- **Direct play can be cut, but only as fast as the client's buffer drains** (feature 5 spike: ~4 s for a paced
+  client, ~35 s for Chromium at 4 Mb/s). Earlier note: logout, ending the session and policy changes don't stop current
   playback on the 12.x Android TV client (benben42 measurements). We rely on clients honouring Stop, which Wholphin
   does.
 - **Anonymous stream endpoints** (`Videos/{id}/stream`, HLS segments) let an already known URL keep playing.
@@ -680,7 +711,9 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
 - **Policy read-modify-write races** with admin edits in the dashboard. `UpdatePolicyAsync` replaces everything.
   Keep the plugin's writes small and immediate, and re-read before each write.
 - **Plugin data is not in Jellyfin system backups.** An export feature is needed.
-- **12.x minor releases** might change controller or action names that the gate filter matches. Add a startup
+- **12.x minor releases** might change controller or action names that the gate filter matches. Feature 5 checks them
+  at startup and reports `Enforcement.Gate` in `/Kids/Info`; renamed media actions are still caught by their
+  attributes. Original note: add a startup
   self-check that logs a warning if the expected actions are not found in `IActionDescriptorCollectionProvider`.
 - **Loading on 12.0 and 12.1 is not verified at runtime** (accepted risk, decided 2026-10-17 for feature 1). The
   plugin compiles against the 12.0.0 packages with `targetAbi 12.0.0.0`, but the dev loop only runs 12.2

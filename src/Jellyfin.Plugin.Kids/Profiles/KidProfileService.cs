@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Events;
 using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Storage;
 
@@ -32,6 +33,11 @@ public sealed class KidProfileService
         _catalog = catalog;
         _roster = roster;
     }
+
+    /// <summary>
+    /// Raised after a kid's profile was saved or removed, so enforcement reloads the kid. Handlers must not throw.
+    /// </summary>
+    public event EventHandler<GenericEventArgs<Guid>>? ProfileChanged;
 
     /// <summary>
     /// Gets a kid's profile.
@@ -102,6 +108,11 @@ public sealed class KidProfileService
             _roster.Add(userId);
         }
 
+        if (stored.Outcome is StoreOutcome.Created or StoreOutcome.Updated)
+        {
+            ProfileChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
+        }
+
         return stored.Outcome switch
         {
             StoreOutcome.Created or StoreOutcome.Updated => new SaveResult(SaveOutcome.Saved, stored.Profile),
@@ -120,6 +131,7 @@ public sealed class KidProfileService
     {
         var deleted = await _store.DeleteAsync(userId, cancellationToken).ConfigureAwait(false);
         _roster.Remove(userId);
+        ProfileChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
         return deleted;
     }
 

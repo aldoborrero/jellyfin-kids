@@ -6,7 +6,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 dev=${JELLYFIN_KIDS_DEV:-$root/.dev}
-url=${JELLYFIN_URL:-http://127.0.0.1:8096}
+url=${JELLYFIN_URL:-http://127.0.0.1:${JELLYFIN_KIDS_PORT:-8096}}
 
 client='MediaBrowser Client="jellyfin-kids-check", Device="dev", DeviceId="jellyfin-kids-check", Version="0.0.1"'
 failures=0
@@ -70,6 +70,16 @@ login_as() {
 }
 
 admin=$(cat "$dev/admin.token")
+
+# Enforcement (feature 5) starts off for every run; its own checks turn it on and off again
+plugin_id=d62ee188270c49d8b7b95e524fec2335
+# configure <jq filter>: changes the plugin configuration as the dashboard does (read, change, write it all back)
+configure() {
+  req "$admin" GET "/Plugins/$plugin_id/Configuration"
+  req "$admin" POST "/Plugins/$plugin_id/Configuration" "$(jq -c "$1" <<<"$body")"
+  [[ $status == 204 ]] || echo "  (configuration $1 answered $status ${body:0:200})"
+}
+configure '.EnforcementEnabled = false | .SittingBreakMinutes = 15'
 
 # Playback through Jellyfin's own playstate API (feature 3, research R11), on the clip provisioning generates
 req "$admin" GET '/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Test%20Pattern&Fields=RunTimeTicks'
@@ -565,6 +575,270 @@ check "au a PUT without the field clears it and omits the key" 200 \
   '(has("SessionLimitMinutes") | not) and (has("DailyAllowanceMinutes") | not)'
 req "$alice" GET "/Kids/Users/$alice_id/Profile"
 check "au alice's profile has no SessionLimitMinutes key" 200 '(has("SessionLimitMinutes") | not)'
+
+# Enforcement (feature 5, quickstart.md §2 ba–bk). Runs with alice left by au: no allowance, no session limit
+trap 'restore_alice; configure ".EnforcementEnabled = false | .SittingBreakMinutes = 15"' EXIT
+
+# req_h <token|-> <deviceId> <method> <path> [range]: like req_dev, also sets $headers (lower-case names)
+req_h() {
+  local token=$1 device=$2 method=$3 path=$4 range=${5-} out hdr
+  local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\""
+  [[ $token != - ]] && auth+=", Token=\"$token\""
+  out=$(mktemp)
+  hdr=$(mktemp)
+  status=$(curl --silent --output "$out" --dump-header "$hdr" --write-out '%{http_code}' -X "$method" "$url$path" \
+    -H "Authorization: $auth" -H 'Content-Type: application/json' ${range:+-H "Range: bytes=$range"} \
+    $([[ $method == POST ]] && echo --data '{}')) || status=000
+  body=$(head -c 200000 "$out" | tr -d '\000')
+  headers=$(tr -d '\r' <"$hdr" | tr '[:upper:]' '[:lower:]')
+  rm -f "$out" "$hdr"
+}
+
+# refused <name> <reason>: the last req_h was refused with 403 PlaybackNotAllowed and that reason
+refused() {
+  if [[ $status == 403 ]] && grep -qx 'x-application-error-code: playbacknotallowed' <<<"$headers" \
+    && grep -qx "x-kids-reason: ${2,,}" <<<"$headers" && grep -q "^content-type: application/problem+json" <<<"$headers" \
+    && jq -e --arg r "$2" '.reason == $r' <<<"$body" >/dev/null 2>&1; then
+    echo "PASS $1"
+  else
+    echo "FAIL $1: $status $(grep -E '^x-(application-error-code|kids-reason)' <<<"$headers" | tr '\n' ' ')${body:0:200}"
+    failures=$((failures + 1))
+  fi
+}
+
+# served <name>: the last req_h was answered with media (200 or 206)
+served() {
+  if [[ $status == 200 || $status == 206 ]]; then
+    echo "PASS $1 ($status)"
+  else
+    echo "FAIL $1: expected 200 or 206, got $status ${body:0:200}"
+    failures=$((failures + 1))
+  fi
+}
+
+# guarded_routes <token> <deviceId> <name prefix> <expect: refused REASON | served>: every kind of guarded route
+guarded_routes() {
+  local token=$1 device=$2 name=$3 expect=$4 reason=${5-}
+  local q="mediaSourceId=$clip_id&VideoCodec=h264&AudioCodec=aac"
+  local -a routes=(
+    "GET /Videos/$clip_id/master.m3u8?$q"
+    "GET /Videos/$clip_id/main.m3u8?$q"
+    "GET /Videos/$clip_id/hls1/main/0.mp4?$q&runtimeTicks=0&actualSegmentLengthTicks=30000000"
+    "GET /Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id"
+    "GET /Items/$clip_id/File"
+    "GET /Items/$clip_id/Download"
+    "GET /Audio/$clip_id/universal?UserId=$alice_id"
+    "POST /LiveStreams/Open?ItemId=$clip_id"
+  )
+  local route
+  for route in "${routes[@]}"; do
+    req_h "$token" "$device" ${route%% *} "${route#* }" 0-1023
+    if [[ $expect == refused ]]; then
+      refused "$name ${route%%\?*}" "$reason"
+    elif [[ ${route%% *} == POST ]]; then
+      # Opening a live stream on a file is not something the server does; anything but a refusal will do
+      [[ $status != 403 ]] && echo "PASS $name ${route%%\?*} ($status)" || { echo "FAIL $name ${route%%\?*}: 403"; failures=$((failures + 1)); }
+    else
+      served "$name ${route%%\?*}"
+    fi
+  done
+}
+
+# playback_info <token> <deviceId>: sets $body to a POST PlaybackInfo answer
+playback_info() { req_h "$1" "$2" POST "/Items/$clip_id/PlaybackInfo?UserId=$alice_id"; }
+
+set_alice() { local rev; rev=$(alice_rev); req "$admin" PUT "/Kids/Users/$alice_id/Profile" "$(jq -c --argjson r "$rev" '. + {Revision: $r}' <<<"$1")"; }
+
+# ba. Info reports the gate: every guarded route was found on this server
+req - GET /Kids/Info
+check "ba Info lists enforcement and sitting, and the gate is ok" 200 \
+  '(.Features | index("enforcement")) != null and (.Features | index("sitting")) != null
+   and .Enforcement.Gate == "ok" and (.Enforcement.Missing | length) == 0'
+
+# bb. Off (the default): a kid with no time left plays as before, and Status says so
+set_alice '{"DailyAllowanceMinutes": 0}'
+check "bb alice gets an allowance of 0" 200
+playback_info "$alice" kids-check-tv
+check "bb with enforcement off, PlaybackInfo has media" 200 '(.MediaSources | length) > 0 and (.ErrorCode == null)'
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+check "bb Status says not enforced, no denial" 200 '.Enforced == false and (has("DeniedReason") | not) and .TimeUp == true'
+
+# bc. On: every guarded route refuses her, with the reason; nothing else changes
+configure '.EnforcementEnabled = true'
+playback_info "$alice" kids-check-tv
+check "bc PlaybackInfo POST is 200 NotAllowed with no media" 200 '.ErrorCode == "NotAllowed" and (.MediaSources | length) == 0'
+grep -qx 'x-kids-reason: timeup' <<<"$headers" && echo "PASS bc PlaybackInfo carries X-Kids-Reason" \
+  || { echo "FAIL bc PlaybackInfo has no X-Kids-Reason"; failures=$((failures + 1)); }
+req_h "$alice" kids-check-tv GET "/Items/$clip_id/PlaybackInfo?UserId=$alice_id"
+check "bc PlaybackInfo GET is 200 NotAllowed" 200 '.ErrorCode == "NotAllowed"'
+guarded_routes "$alice" kids-check-tv "bc alice refused on" refused timeUp
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&ApiKey=$alice" 0-1023
+refused "bc an anonymous stream URL with alice's ApiKey is refused" timeUp
+accept_ct=$(curl --silent --output /dev/null --write-out '%{http_code} %{content_type}' -H 'Accept: video/mp4' \
+  "$url/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&ApiKey=$alice")
+if [[ $accept_ct == "403 application/problem+json"* ]]; then
+  echo "PASS bc a refusal is JSON even when the client asks for video ($accept_ct)"
+else
+  echo "FAIL bc a refusal with Accept: video/mp4 answered $accept_ct"
+  failures=$((failures + 1))
+fi
+req "$alice" GET /Users/Me
+check "bc alice can still use the server (Users/Me)" 200
+req "$alice" GET "/Items?Recursive=true&Limit=1"
+check "bc alice can still browse" 200
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+check "bc Status says enforced and timeUp until the next day" 200 \
+  '.Enforced == true and .DeniedReason == "timeUp" and .DeniedUntil == .NextDayStartsAt'
+
+# bd. Administrators and API keys are never refused
+playback_info "$admin" kids-check-admin
+check "bd admin gets media" 200 '(.MediaSources | length) > 0'
+guarded_routes "$admin" kids-check-admin "bd admin served on" served
+req "$admin" POST "/Auth/Keys?app=kids-check-enforcement"
+req "$admin" GET /Auth/Keys
+api_key=$(jq -r '[.Items[] | select(.AppName == "kids-check-enforcement")][0].AccessToken' <<<"$body")
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&ApiKey=$api_key" 0-1023
+served "bd an API key is served"
+req "$admin" DELETE "/Auth/Keys/$api_key"
+
+# be. A URL without a token is refused when it names a kid's device, and served otherwise (documented limit)
+play "$alice" kids-check-tv start kids-check-be
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&deviceId=kids-check-tv" 0-1023
+refused "be a tokenless stream naming alice's device is refused" timeUp
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&deviceId=kids-check-admin" 0-1023
+served "be a tokenless stream naming an adult's device is served"
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id" 0-1023
+served "be a tokenless stream naming no device is served (documented limit)"
+
+# bf. A bonus lifts the refusal at once: the answer already says so, and the next PlaybackInfo has media
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 5}'
+check "bf the bonus answer has no denial" 200 '.Enforced == true and (has("DeniedReason") | not)'
+playback_info "$alice" kids-check-tv
+check "bf PlaybackInfo has media again" 200 '(.MediaSources | length) > 0'
+
+# bg. Live cutoff without a WebSocket: alice holds a direct-play download open and reports progress; when her time
+# runs out the download is cut, later requests are refused and the server no longer shows her playing. One info line
+# per denial and one per stopped session
+log_file=$(ls -t "$dev"/log/log_*.log | head -1)
+kids_lines() { grep -cE "Kids: .?alice.? may not play now|Kids: stopped .?alice.?'s playback" "$log_file" || true; }
+lines_before=$(kids_lines)
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+used_now=$(jq -r .UsedSeconds <<<"$body")
+bonus_now=$(jq -r .BonusSeconds <<<"$body")
+# About a minute left: today's bonuses still count, so the allowance makes up the rest
+allowance=$(((used_now - bonus_now + 45) / 60 + 1))
+set_alice "{\"DailyAllowanceMinutes\": $((allowance < 0 ? 0 : allowance))}"
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+left=$(jq -r .RemainingSeconds <<<"$body")
+echo "  alice has ${left}s left"
+download=$(mktemp)
+started=$(date +%s)
+curl --silent --output /dev/null --limit-rate 40k --write-out '%{http_code} %{exitcode}' \
+  "$url/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&deviceId=kids-check-bg&ApiKey=$alice" >"$download" &
+download_pid=$!
+play "$alice" kids-check-bg start kids-check-bg
+while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) - started < left + 60)); do
+  sleep 5
+  play "$alice" kids-check-bg progress kids-check-bg >/dev/null
+done
+cut_after=$(($(date +%s) - started))
+kill "$download_pid" 2>/dev/null || true
+wait "$download_pid" 2>/dev/null || true
+read -r download_status download_exit <"$download" || true
+rm -f "$download"
+if [[ $download_exit != 0 ]] && ((cut_after <= left + 30)); then
+  echo "PASS bg the held download was cut ${cut_after}s after the start, with ${left}s left (curl exit $download_exit)"
+else
+  echo "FAIL bg the held download was not cut in time: ${cut_after}s with ${left}s left (http $download_status, exit $download_exit)"
+  failures=$((failures + 1))
+fi
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&ApiKey=$alice" 1024-2047
+refused "bg the next range request is refused" timeUp
+sleep 2
+req "$admin" GET /Sessions
+check "bg the server no longer shows alice playing on that device" 200 \
+  '[.[] | select(.DeviceId == "kids-check-bg") | .NowPlayingItem] | all(. == null)'
+lines_after=$(kids_lines)
+near $((lines_after - lines_before)) 3 1 "bg info log lines for this cutoff (denial + stopped sessions)"
+
+# bh. Allowed hours: a window that ends in about 80 s stops her running playback at the boundary, and her ApiKey
+# stream requests are refused after it, which Jellyfin itself does not do (the 1 s server tick drives it, since the
+# core refuses her own reports after hours)
+set_alice '{}'
+req "$admin" GET "/Users/$alice_id"
+end_epoch=$(($(date +%s) + 80))
+end_hour=$(date -d "@$end_epoch" +'%-H %-M %-S' | awk '{printf "%.6f", $1 + $2/60 + $3/3600}')
+req "$admin" POST "/Users/$alice_id/Policy" "$(jq -c --arg d "$(date +%A)" --argjson h "$end_hour" \
+  '.Policy | .AccessSchedules = [{DayOfWeek: $d, StartHour: 0, EndHour: $h}]' <<<"$body")"
+check "bh admin sets a window that ends in 80 s" 204
+download=$(mktemp)
+started=$(date +%s)
+curl --silent --output /dev/null --limit-rate 40k --write-out '%{http_code} %{exitcode}' \
+  "$url/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&deviceId=kids-check-bh&ApiKey=$alice" >"$download" &
+download_pid=$!
+play "$alice" kids-check-bh start kids-check-bh
+while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) < end_epoch + 60)); do
+  sleep 5
+  play "$alice" kids-check-bh progress kids-check-bh >/dev/null
+done
+cut_at=$(($(date +%s) - end_epoch))
+kill "$download_pid" 2>/dev/null || true
+wait "$download_pid" 2>/dev/null || true
+read -r download_status download_exit <"$download" || true
+rm -f "$download"
+if [[ $download_exit != 0 ]] && ((cut_at >= -2 && cut_at <= 30)); then
+  echo "PASS bh the held download was cut ${cut_at}s after the window closed (curl exit $download_exit)"
+else
+  echo "FAIL bh the held download was not cut at the boundary: ${cut_at}s (http $download_status, exit $download_exit)"
+  failures=$((failures + 1))
+fi
+req_h - none GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id&ApiKey=$alice" 0-1023
+refused "bh an ApiKey stream after hours is refused" outsideSchedule
+req "$admin" GET /Sessions
+check "bh the server no longer shows alice playing after hours" 200 \
+  '[.[] | select(.DeviceId == "kids-check-bh") | .NowPlayingItem] | all(. == null)'
+restore_alice
+check "bh alice's policy is restored" 204
+
+# bi. Sitting limit, across devices, with a 1-minute break (slow: DEV_CHECK_SLOW=1)
+if [[ -n ${DEV_CHECK_SLOW-} ]]; then
+  configure '.SittingBreakMinutes = 1'
+  set_alice '{"SessionLimitMinutes": 5}'
+  play "$alice" kids-check-bi-1 start kids-check-bi-1
+  play_for "$alice" kids-check-bi-1 kids-check-bi-1 150
+  play "$alice" kids-check-bi-1 stop kids-check-bi-1
+  play "$alice" kids-check-bi-2 start kids-check-bi-2
+  play_for "$alice" kids-check-bi-2 kids-check-bi-2 160
+  req "$alice" GET "/Kids/Users/$alice_id/Status"
+  check "bi after 5 minutes on two devices alice is on a break" 200 \
+    '.DeniedReason == "sessionLimit" and .SittingLimitSeconds == 300 and .SittingRemainingSeconds == 0
+     and .BreakRemainingSeconds > 0 and .BreakSeconds == 60'
+  playback_info "$alice" kids-check-bi-2
+  check "bi PlaybackInfo is NotAllowed during the break" 200 '.ErrorCode == "NotAllowed"'
+  sleep 65
+  playback_info "$alice" kids-check-bi-2
+  check "bi after the break she may play again" 200 '(.MediaSources | length) > 0'
+  req "$alice" GET "/Kids/Users/$alice_id/Status"
+  check "bi a new sitting starts at zero" 200 '(has("DeniedReason") | not) and .SittingUsedSeconds == 0'
+  configure '.SittingBreakMinutes = 15'
+else
+  echo "SKIP bi sitting limit (set DEV_CHECK_SLOW=1)"
+fi
+
+# bj. Off again: every refusal is gone at once
+set_alice '{"DailyAllowanceMinutes": 0}'
+playback_info "$alice" kids-check-tv
+check "bj enforcement on refuses alice" 200 '.ErrorCode == "NotAllowed"'
+configure '.EnforcementEnabled = false'
+playback_info "$alice" kids-check-tv
+check "bj with enforcement off she gets media at once" 200 '(.MediaSources | length) > 0'
+req_h "$alice" kids-check-tv GET "/Videos/$clip_id/stream?static=true&mediaSourceId=$clip_id" 0-1023
+served "bj with enforcement off her stream is served"
+# Leave alice as au did, with today's bonuses and screen time purged, so the next run's allowance checks start clean
+req "$admin" DELETE "/Kids/Users/$alice_id/Profile?purge=true"
+check "bj admin unmarks alice with purge" 204
+req "$admin" PUT "/Kids/Users/$alice_id/Profile" '{"Revision":0}'
+check "bj admin marks alice again, with no allowance and no time used" 200
 
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
