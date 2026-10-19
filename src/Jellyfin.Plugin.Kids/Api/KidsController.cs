@@ -58,7 +58,7 @@ public class KidsController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<KidsInfo> GetInfo()
-        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: ["profiles", "parentLock", "allowance"]);
+        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: KidsInfo.SupportedFeatures);
 
     /// <summary>
     /// Lists the kids, so a user switcher can tell who they are.

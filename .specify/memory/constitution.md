@@ -1,12 +1,15 @@
 <!--
 Sync Impact Report
-- Version change: (template) → 1.0.0
-- Principles defined: I. Leverage Jellyfin, Don't Duplicate It; II. The Server Decides;
-  III. Parents Are Never Locked Out; IV. Secrets Stay Secret; V. A Stable, Client-Agnostic Contract;
-  VI. Tested Where It Matters
-- Added sections: Technical Constraints, Development Workflow, Governance
+- Version change: 1.0.0 → 1.0.1 (PATCH: wording clarification)
+- Modified principles: V. A Stable, Client-Agnostic Contract (title unchanged). "Clients without the plugin keep
+  working in their own local mode." becomes "Clients MUST keep working without kids features when the plugin is
+  absent." Reason: Wholphin decided that kids mode exists only with the plugin, so there is no client-side local kids
+  mode to keep; what stays required is that a client still works as a normal Jellyfin client on a server without it.
+- Added sections: none
 - Removed sections: none
 - Templates: plan/spec/tasks templates read this file at runtime; no template edits required
+- Follow-up: docs/plan.md §1 and §4.1 updated to drop "local mode" (feature 4); the specs of features 1–3 keep their
+  historical wording
 - Deferred TODOs: none
 -->
 # Jellyfin Kids Constitution
@@ -69,7 +72,7 @@ Rationale: the TV in the living room is shared with the people the lock is meant
   versioned (`apiVersion`). Breaking changes raise the API version; old versions are kept or
   refused explicitly, never changed silently.
 - The contract MUST be usable by any Jellyfin client, with Wholphin as the reference client.
-  Clients without the plugin keep working in their own local mode.
+  Clients MUST keep working without kids features when the plugin is absent.
 - The plugin MUST load on every Jellyfin 12.x release from 12.0 (`targetAbi 12.0.0.0`, compiled
   against the 12.0.0 packages). Anything that depends on Jellyfin internals, such as controller or
   action names, MUST be checked at startup and logged if missing.
@@ -115,4 +118,4 @@ This constitution supersedes other practices for this repository. Amendments are
 removing or redefining a principle, MINOR for a new principle or materially expanded guidance,
 PATCH for clarifications. Reviews of plans and changes verify compliance with the principles above.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-17
+**Version**: 1.0.1 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-19

@@ -37,4 +37,9 @@ public sealed record KidProfileInput
     /// Gets the daily allowance in minutes; null means unlimited.
     /// </summary>
     public int? DailyAllowanceMinutes { get; init; }
+
+    /// <summary>
+    /// Gets the session limit in minutes; null means no sitting limit.
+    /// </summary>
+    public int? SessionLimitMinutes { get; init; }
 }

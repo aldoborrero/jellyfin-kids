@@ -91,3 +91,10 @@ server through Jellyfin's playstate API; the server does not cross-check (clarif
 - **Day boundaries**: the day runs from the household's "day starts at" hour (server local time, default midnight).
   Playback across the boundary is split between the two days.
 - **Usage only grows**. Parents give time back with bonus minutes (clarification Q5).
+- **Changing "day starts at" mid-day** (known behaviour, accepted): days are labelled by the date they start on, and
+  recorded days are not recalculated. Moving the hour later than the current time makes today's `Date` step back to
+  the previous day's label until the new hour, and the time counted meanwhile goes to that day. From the new hour,
+  `Date` is today's again and that day reuses the usage and bonus already recorded under today's date. For example, at
+  17:30 on 2026-10-18 with H moved from 0 to 18: `Date` reads `2026-10-17` until 18:00, then `2026-10-18` with the
+  usage counted since midnight. Moving it to an hour that has already passed today keeps today's `Date` and usage.
+  Clients should not treat a `Date` that goes back as an error.

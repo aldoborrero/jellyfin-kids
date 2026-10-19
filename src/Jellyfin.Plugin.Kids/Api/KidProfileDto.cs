@@ -15,6 +15,7 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// <param name="Sections">The home sections in order, with their visibility.</param>
 /// <param name="PickedItemIds">The picked collections and playlists in order.</param>
 /// <param name="DailyAllowanceMinutes">The daily screen-time allowance in minutes, 0–1440; absent when unlimited.</param>
+/// <param name="SessionLimitMinutes">The sitting limit in minutes, 5–120, counted by each device; absent when there is none.</param>
 public record KidProfileDto(
     Guid UserId,
     long Revision,
@@ -23,7 +24,8 @@ public record KidProfileDto(
     int AutoplayCap,
     IReadOnlyList<HomeSectionEntry> Sections,
     IReadOnlyList<Guid> PickedItemIds,
-    int? DailyAllowanceMinutes)
+    int? DailyAllowanceMinutes,
+    int? SessionLimitMinutes)
 {
     /// <summary>
     /// Maps a stored profile.
@@ -38,5 +40,6 @@ public record KidProfileDto(
         profile.Settings.AutoplayCap,
         profile.Settings.Sections,
         profile.Settings.PickedItemIds,
-        profile.Settings.DailyAllowanceMinutes);
+        profile.Settings.DailyAllowanceMinutes,
+        profile.Settings.SessionLimitMinutes);
 }

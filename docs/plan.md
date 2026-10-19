@@ -41,7 +41,8 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
 
 - Reimplementing rating, tag, library or allowed-hours filtering. Jellyfin already enforces these for every client.
 - A separate kids web client, or injecting JavaScript into jellyfin-web for kid sessions.
-- Supporting Jellyfin 10.11 in v1. Wholphin keeps its **local mode** for servers without the plugin.
+- Supporting Jellyfin 10.11 in v1. Wholphin offers kids mode only with the plugin; on a server without it, Wholphin
+  works as a normal Jellyfin client with no kids features (constitution V, amended 2026-10-19).
 - Guaranteeing enforcement against a technically capable attacker who holds a kid token. Some stream endpoints are
   anonymous by design (§3.3), so the goal is "every normal client is stopped".
 
@@ -56,7 +57,7 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
 | Content restrictions | Server, native `UserPolicy` | Already enforced |
 | **Device lock** ("this TV is in kids mode, leaving needs the parent gate") | **Device** | Must work offline. Only the device knows its own UI state |
 | **Offline cache and outbox** | **Device** | Kids mode must keep working while the server is unreachable |
-| **Per-session timer** ("30 minutes, then stop") | **Device** by default, with the server optional (phase 4) | It is a per-sitting UX feature, and the daily allowance covers the cross-device need. The server may later offer a "session cap" per kid that it enforces like the allowance |
+| **Per-session timer** ("30 minutes, then stop") | **Device** counts it; the **server** stores the per-kid limit (`SessionLimitMinutes`, spec `004-kids-session-limit`) | It is a per-sitting UX feature, and the daily allowance covers the cross-device need. Each TV counts its own sitting. The server may later offer a "session cap" per kid that it enforces like the allowance |
 | CHALLENGE lock type (arithmetic) | Device only | It is not a secret, so it cannot back a server grant (§5.3) |
 
 ## 2. Leverage map: what Jellyfin already gives a plugin
@@ -455,9 +456,9 @@ NuGet packages (more detail in §6.4):
 
 | Method and path | Auth | Request → response |
 |---|---|---|
-| `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","enforcement","schedules"]}`. Detection: 200 means plugin mode, 404 means local mode, a network error keeps the last known mode. Nothing per-household, so no lock type (constitution IV; decided 2026-10-18 in feature 2): clients read it from `GET /Kids/Parent/Lock` after signing in |
+| `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","sessionLimit","enforcement","schedules"]}`. Detection: 200 means plugin mode, 404 means no plugin (no kids features), a network error keeps the last known mode. Null fields are omitted, so a client checks the feature (for example `sessionLimit`) before reading a missing field as "none". Nothing per-household, so no lock type (constitution IV; decided 2026-10-18 in feature 2): clients read it from `GET /Kids/Parent/Lock` after signing in |
 | `GET /Kids/Profiles` | `[Authorize(IgnoreParentalControl)]` | → `[{userId, revision}]`, so the user switcher knows who the kids are. Ids only |
-| `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionDefaultMinutes?, strictLock}`, or 404 if the user is not a kid |
+| `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionLimitMinutes? (5–120, stored only, counted per device), strictLock}`, or 404 if the user is not a kid |
 | `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` (required; **0 marks the user as a kid**, 409 if already a kid) → 200 with the new revision, or **409 with the current DTO**. The revision is checked before validation, so stale and invalid gives 409 |
 | `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid; usage is kept unless `?purge=true` (feature 3) |
 | `POST /Kids/Parent/Verify` | `[Authorize(IgnoreParentalControl)]` | `{code}` → `{valid:true, grant, expiresAt}`, or `{valid:false, retryAfterSeconds?}` |
@@ -634,6 +635,9 @@ Verified against the 12.2 sources. Paths are in `.reference/jellyfin`.
 | 4 | `kids-enforcement` | Spike: verify a plugin MVC filter fires on PlaybackInfo and HLS. Then `EnforcementLoop` (warnings, Stop, transcode kill) and `PlaybackGateFilter` (403 `timeUp` or `outsideSchedule`), with stops when the schedule closes, behind a config flag | Expiry stops Wholphin and jellyfin-web within 10 s; a new play attempt gets 403 with the JSON body; a bonus re-enables playback immediately; an admin or API key is never blocked; disabling the plugin removes all blocking |
 | 5 | `kids-policy-helpers` | Recommended policy with dry-run diff, `AccessSchedules` editor (config page plus endpoint), share picked playlists with the kid, optional strict lock (schedule rewrite) with reconciler | Dry run shows the diff without writing; apply changes only the listed fields; the strict lock is restored after restart and when time is added; the schedule editor round-trips the existing entries |
 | 6 | `kids-extras` | Per-kid lock override, activity history, export and import of plugin state (not covered by system backup), optional server-side session cap, optional 10.11 build | Export, wipe and import restore profiles and lock; history lists today's items per kid |
+
+Spec numbers follow the order features are built, not this table: spec `004-kids-session-limit` (2026-10-19) adds the
+per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4) becomes spec 005.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.

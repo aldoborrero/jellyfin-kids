@@ -50,6 +50,13 @@ public class KidProfileUpdate
     public int? DailyAllowanceMinutes { get; init; }
 
     /// <summary>
+    /// Gets the longest a single sitting may last in minutes, 5–120; null or omitted means no sitting limit. The server
+    /// only stores it, and each device counts its own sittings. Like the allowance, omitting it clears it: send it on
+    /// every update.
+    /// </summary>
+    public int? SessionLimitMinutes { get; init; }
+
+    /// <summary>
     /// Maps the body to the validator's input.
     /// </summary>
     /// <returns>The input.</returns>
@@ -60,6 +67,7 @@ public class KidProfileUpdate
         AutoplayCap = AutoplayCap,
         Sections = Sections?.Select(s => new SectionInput(s.Section, s.Visible)).ToList(),
         PickedItemIds = PickedItemIds,
-        DailyAllowanceMinutes = DailyAllowanceMinutes
+        DailyAllowanceMinutes = DailyAllowanceMinutes,
+        SessionLimitMinutes = SessionLimitMinutes
     };
 }

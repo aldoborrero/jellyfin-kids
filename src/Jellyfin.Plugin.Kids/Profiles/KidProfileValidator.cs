@@ -33,6 +33,12 @@ public static class KidProfileValidator
             errors["DailyAllowanceMinutes"] = [string.Create(CultureInfo.InvariantCulture, $"Must be between {KidProfileSettings.MinDailyAllowance} and {KidProfileSettings.MaxDailyAllowance}.")];
         }
 
+        var sessionLimit = input.SessionLimitMinutes;
+        if (sessionLimit is < KidProfileSettings.MinSessionLimit or > KidProfileSettings.MaxSessionLimit)
+        {
+            errors["SessionLimitMinutes"] = [string.Create(CultureInfo.InvariantCulture, $"Must be between {KidProfileSettings.MinSessionLimit} and {KidProfileSettings.MaxSessionLimit}.")];
+        }
+
         var sections = ValidateSections(input.Sections ?? [], errors);
         var picks = ValidatePicks(input.PickedItemIds ?? [], storedPicks, catalog, errors);
 
@@ -48,7 +54,8 @@ public static class KidProfileValidator
             AutoplayCap = cap,
             Sections = HomeSectionEntry.Normalize(sections),
             PickedItemIds = picks,
-            DailyAllowanceMinutes = allowance
+            DailyAllowanceMinutes = allowance,
+            SessionLimitMinutes = sessionLimit
         };
         return new ValidationResult(settings, errors);
     }

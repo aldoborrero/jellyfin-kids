@@ -26,6 +26,12 @@ public sealed record KidProfileSettings
     /// <summary>The highest daily allowance, in minutes (a whole day).</summary>
     public const int MaxDailyAllowance = 1440;
 
+    /// <summary>The shortest session limit, in minutes.</summary>
+    public const int MinSessionLimit = 5;
+
+    /// <summary>The longest session limit, in minutes.</summary>
+    public const int MaxSessionLimit = 120;
+
     /// <summary>
     /// Gets a value indicating whether the kid may search.
     /// </summary>
@@ -55,4 +61,10 @@ public sealed record KidProfileSettings
     /// Gets the daily screen-time allowance in minutes, 0–1440 inclusive; null means unlimited and is the default.
     /// </summary>
     public int? DailyAllowanceMinutes { get; init; }
+
+    /// <summary>
+    /// Gets the longest a single sitting may last, in minutes, 5–120 inclusive; null means no sitting limit and is the
+    /// default. The server only stores it: each device counts its own sittings.
+    /// </summary>
+    public int? SessionLimitMinutes { get; init; }
 }
