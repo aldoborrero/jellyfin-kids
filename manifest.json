@@ -8,6 +8,14 @@
     "category": "Administration",
     "versions": [
       {
+        "version": "0.0.5.0",
+        "changelog": "Enforcement (off by default, EnforcementEnabled in the plugin configuration): the server warns, stops and refuses playback on every client when a kid's allowance, allowed hours or sitting limit runs out; Status reports the denial and the sitting, counted per kid across devices with a household break (SittingBreakMinutes, default 15).",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/aldoborrero/jellyfin-kids/releases/download/v0.0.5.0/kids_0.0.5.0.zip",
+        "checksum": "51f5bb3d701958f2c1f685d0a26353ee",
+        "timestamp": "2026-10-19T16:40:03Z"
+      },
+      {
         "version": "0.0.4.1",
         "changelog": "Dashboard pages redesigned to look and behave like native Jellyfin 12.2 pages: a max-width layout, the users list first with avatars, full names, today's screen time and a visible Edit settings button, then the parent lock and screen time; the kid editor grouped into sections, with bonus minutes moved into it.",
         "targetAbi": "12.0.0.0",
