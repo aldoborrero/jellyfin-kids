@@ -13,7 +13,7 @@
 
 [Install](#install) · [What it does](#what-it-does) · [How it works](#how-it-works) · [Clients](#clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
 
-<code>https://aldoborrero.github.io/jellyfin-kids/manifest.json</code>
+<code>https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json</code>
 
 </div>
 
@@ -38,7 +38,7 @@ Nothing leaves your server: no telemetry, no accounts, no third-party services.
 ## Install
 
 1. In Jellyfin, open **Dashboard → Plugins → Repositories** and add
-   `https://aldoborrero.github.io/jellyfin-kids/manifest.json`.
+   `https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json`.
 2. Open **Catalog**, install **Kids**, and restart Jellyfin.
 3. Open **Dashboard → Kids** to mark kids, set the parent code and choose daily allowances.
 
@@ -129,7 +129,7 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 - [x] Kid profiles and dashboard pages
 - [x] Household parent code with server-side checks and grants
 - [x] Daily allowance counted on the server
-- [ ] Per-kid sitting limit
+- [x] Per-kid sitting limit
 - [ ] Stop playback when time is up, on every client
 - [ ] Recommended restrictions in one step, an allowed-hours editor, and picks backed by Jellyfin collections
 - [ ] Per-kid codes, viewing history, and export and import of plugin data

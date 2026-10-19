@@ -1,8 +1,8 @@
 name: Release
 
 # Push a tag vX.Y.Z.W matching build.yaml and Directory.Build.props to publish that version:
-# a GitHub Release with the plugin zip, and the repository manifest on GitHub Pages
-# (https://aldoborrero.github.io/jellyfin-kids/manifest.json, served from the gh-pages branch).
+# a GitHub Release with the plugin zip, and the repository manifest on the gh-pages branch
+# (served raw from GitHub: https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json).
 on:
   push:
     tags: ['v*.*.*.*']
