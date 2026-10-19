@@ -1,5 +1,5 @@
-// The Kids dashboard page: the household parent lock, the "day starts at" setting, and the list of Jellyfin users where
-// kids are marked and unmarked, with today's screen time, bonus minutes and a warning for kids who are administrators.
+// The Kids dashboard page: the list of Jellyfin users where kids are marked and unmarked, with today's screen time and
+// a warning for kids who are administrators; the household parent lock; and the "day starts at" setting.
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none.
 
 const adminWarning = 'Administrators bypass every restriction. Use a non-admin account for this kid.';
@@ -33,41 +33,64 @@ function element(tag, className, text) {
     return node;
 }
 
+function icon(name) {
+    const node = element('span', 'material-icons ' + name);
+    node.setAttribute('aria-hidden', 'true');
+    return node;
+}
+
 function showError(view, message) {
     const error = view.querySelector('.kidsError');
     error.textContent = message || '';
     error.style.display = message ? '' : 'none';
 }
 
-function renderUser(view, user, isKid) {
-    const isAdmin = Boolean(user.Policy && user.Policy.IsAdministrator);
-    const item = element('div', 'listItem listItem-border');
-    const body = element('div', 'listItemBody two-line');
-    body.style.flexGrow = '1';
-
-    const title = element('div', 'listItemBodyText', user.Name);
-    if (isAdmin) {
-        title.append(' ', element('span', 'fieldDescription', '(Administrator)'));
+// The user's picture, as on Jellyfin's own lists, or the person icon when there is none
+function avatar(user) {
+    if (!user.PrimaryImageTag) {
+        return icon('listItemIcon person');
     }
 
-    body.append(title);
+    const image = element('div', 'listItemImage kidsAvatar');
+    const url = ApiClient.getUrl('Users/' + user.Id + '/Images/Primary', { tag: user.PrimaryImageTag, height: 96 });
+    image.style.backgroundImage = 'url("' + url + '")';
+    image.setAttribute('aria-hidden', 'true');
+    return image;
+}
+
+function renderUser(view, user, isKid) {
+    const isAdmin = Boolean(user.Policy && user.Policy.IsAdministrator);
+    const item = element('div', 'listItem listItem-border kidsUserRow');
+    item.dataset.action = 'none';
+    const body = element('div', 'listItemBody');
+    body.append(element('div', 'listItemBodyText kidsUserName', user.Name));
+
+    // "Administrator", "Kid", "Not a kid"; a kid's daily allowance is added once their status is loaded
+    const role = [];
+    if (isAdmin) {
+        role.push('Administrator');
+    }
+
+    if (isKid) {
+        role.push('Kid');
+    } else if (!isAdmin) {
+        role.push('Not a kid');
+    }
+
+    const summary = element('div', 'listItemBodyText secondary kidsSummary', role.join(' · '));
+    body.append(summary);
 
     if (isKid && isAdmin) {
-        const warning = element('div', 'listItemBodyText secondary kidsAdminWarning', '⚠ ' + adminWarning);
-        warning.style.color = '#ff9800';
+        const warning = element('div', 'listItemBodyText secondary kidsWarning kidsAdminWarning');
+        warning.append(icon('warning'), adminWarning);
         body.append(warning);
     }
 
     if (isKid) {
-        const link = element('a', 'button-link', 'Edit settings');
-        link.href = '#/configurationpage?name=KidsUser&userId=' + encodeURIComponent(user.Id);
-        const linkLine = element('div', 'listItemBodyText secondary');
-        linkLine.append(link);
-        body.append(linkLine);
-        body.append(renderUsage(user));
+        body.append(renderUsage(user, summary, role));
     }
 
-    const label = element('label', 'checkboxContainer');
+    const label = element('label', 'kidsKidCheckbox');
     const checkbox = element('input');
     checkbox.type = 'checkbox';
     checkbox.setAttribute('is', 'emby-checkbox');
@@ -76,94 +99,57 @@ function renderUser(view, user, isKid) {
     label.append(checkbox, element('span', null, 'Kid'));
     checkbox.addEventListener('change', () => onToggle(view, user, checkbox));
 
-    item.append(body, label);
+    item.append(avatar(user), body);
+
+    // The Kid checkbox stays last, so it lines up on every row
+    if (isKid) {
+        const edit = element('a', 'emby-button button-flat kidsEdit');
+        edit.setAttribute('is', 'emby-linkbutton');
+        edit.href = '#/configurationpage?name=KidsUser&userId=' + encodeURIComponent(user.Id);
+        edit.title = 'Edit the settings of ' + user.Name;
+        edit.setAttribute('aria-label', 'Edit the settings of ' + user.Name);
+        edit.append(icon('tune'), element('span', 'kidsEditLabel', 'Edit settings'));
+        item.append(edit);
+    }
+
+    item.append(label);
     return item;
 }
 
-// Screen time per kid: today's usage from GET Status, and a bonus control that posts WatchTime/Bonus
+// Today's screen time per kid, from GET Status; bonus minutes are given in the kid's editor
 
 function minutes(seconds) {
     return Math.floor(seconds / 60);
 }
 
+function hasAllowance(status) {
+    return status.AllowanceSeconds !== undefined && status.AllowanceSeconds !== null;
+}
+
 function usageText(status) {
     const used = minutes(status.UsedSeconds);
-    if (status.AllowanceSeconds === undefined || status.AllowanceSeconds === null) {
-        return 'Today: ' + used + ' min (no limit)';
+    if (!hasAllowance(status)) {
+        return 'Today: ' + used + ' min';
     }
 
     const bonus = status.BonusSeconds > 0 ? ' + ' + minutes(status.BonusSeconds) + ' min bonus' : '';
     const of = 'Today: ' + used + ' of ' + minutes(status.AllowanceSeconds) + ' min' + bonus;
-    return status.TimeUp ? of + ', time is up' : of + ' (' + minutes(status.RemainingSeconds) + ' min left)';
+    return status.TimeUp ? of + ' · time is up' : of + ' · ' + minutes(status.RemainingSeconds) + ' min left';
 }
 
-function renderUsage(user) {
-    const line = element('div', 'listItemBodyText secondary kidsUsage');
-    const text = element('span', 'kidsUsageText', 'Today: …');
-    const form = element('form', 'kidsBonusForm');
-    // Our inline message instead of the browser's validation bubble, which would block the submit silently
-    form.noValidate = true;
-    form.style.display = 'inline-flex';
-    form.style.alignItems = 'center';
-    form.style.gap = '0.5em';
-    form.style.marginLeft = '1em';
-    const input = element('input', 'kidsBonusMinutes');
-    input.type = 'number';
-    input.min = '1';
-    input.max = '240';
-    input.step = '1';
-    input.placeholder = '+ minutes';
-    input.style.width = '7em';
-    input.setAttribute('aria-label', 'Bonus minutes for ' + user.Name);
-    const add = element('button', 'raised emby-button kidsBonusAdd', 'Add');
-    add.type = 'submit';
-    const error = element('span', 'kidsBonusError');
-    error.style.color = '#ff6b6b';
-    error.hidden = true;
-    form.append(input, add, error);
-    line.append(text, form);
-
-    const show = (status) => {
-        text.textContent = usageText(status);
-    };
+function renderUsage(user, summary, role) {
+    const line = element('div', 'listItemBodyText secondary kidsUsage', 'Today: …');
 
     // Never show 0 when the status could not be read
     request('GET', 'Kids/Users/' + user.Id + '/Status')
-        .then(show)
+        .then((status) => {
+            const allowance = hasAllowance(status) ? minutes(status.AllowanceSeconds) + ' min a day' : 'no daily limit';
+            summary.textContent = role.concat([allowance]).join(' · ');
+            line.textContent = usageText(status);
+        })
         .catch(() => {
-            text.textContent = 'Usage unavailable';
+            line.textContent = 'Usage unavailable';
         });
-
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        setText(error, null);
-        const value = Number(input.value);
-        if (!Number.isInteger(value) || value < 1 || value > 240) {
-            setText(error, 'Between 1 and 240 minutes.');
-            return;
-        }
-
-        add.disabled = true;
-        request('POST', 'Kids/Users/' + user.Id + '/WatchTime/Bonus', { Minutes: value })
-            .then((status) => {
-                input.value = '';
-                show(status);
-            })
-            .catch((response) => {
-                if (response && response.status === 400 && typeof response.json === 'function') {
-                    return response.json().then((problemDetails) => {
-                        const errors = (problemDetails && problemDetails.errors) || {};
-                        setText(error, errors.Minutes ? errors.Minutes[0] : 'The bonus was refused.');
-                    }, () => setText(error, 'The bonus was refused.'));
-                }
-
-                Dashboard.alert({ title: 'Kids', message: 'Could not add bonus time for ' + user.Name + '.' });
-                return undefined;
-            })
-            .finally(() => {
-                add.disabled = false;
-            });
-    });
 
     return line;
 }
@@ -286,6 +272,13 @@ function setText(node, text) {
     node.hidden = !text;
 }
 
+// A message under the lock form: a problem in the theme's error colour, or a plain confirmation
+function setLockMessage(view, text, isProblem) {
+    const message = view.querySelector('.kidsLockMessage');
+    message.classList.toggle('kidsProblem', Boolean(isProblem));
+    setText(message, text);
+}
+
 // Mirrors the server's rules (ParentCode): 4 to 32 symbols from the type's set, compared exactly
 function codeProblem(lockType, code, confirmation) {
     if (code.length < 4 || code.length > 32) {
@@ -301,14 +294,19 @@ function codeProblem(lockType, code, confirmation) {
 
 function renderLock(view, status) {
     const hasLock = Boolean(status && status.LockType);
-    const statusLine = view.querySelector('.kidsLockStatus');
-    statusLine.textContent = hasLock
-        ? 'Parent lock: ' + (lockTypeNames[status.LockType] || status.LockType)
-            + (status.ChangedAt ? ', last changed ' + new Date(status.ChangedAt).toLocaleString() : '')
-        : 'No parent lock is set.';
+    view.querySelector('.kidsLockStatus').textContent = hasLock
+        ? 'Parent lock on: ' + (lockTypeNames[status.LockType] || status.LockType)
+        : 'No parent lock is set';
+    setText(view.querySelector('.kidsLockChanged'), hasLock && status.ChangedAt
+        ? 'Set ' + new Date(status.ChangedAt).toLocaleString()
+        : null);
+    const lockIcon = view.querySelector('.kidsLockIcon');
+    lockIcon.classList.toggle('lock', hasLock);
+    lockIcon.classList.toggle('lock_open', !hasLock);
     view.querySelector('.kidsLockAdvice').hidden = hasLock;
     // emby-button styles override the hidden attribute, so hide the button through its style
     view.querySelector('.kidsLockRemove').style.display = hasLock ? '' : 'none';
+    view.querySelector('.kidsLockSave span').textContent = hasLock ? 'Change code' : 'Save code';
     if (hasLock) {
         view.querySelector('.kidsLockType').value = status.LockType;
     }
@@ -327,6 +325,7 @@ function loadLock(view) {
         .catch(() => {
             // Never read a failure as "no lock"
             view.querySelector('.kidsLockStatus').textContent = '';
+            setText(view.querySelector('.kidsLockChanged'), null);
             setText(view.querySelector('.kidsLockError'), 'Could not load the parent lock. Check the server log.');
         });
 }
@@ -335,11 +334,9 @@ function saveLock(view) {
     const lockType = view.querySelector('.kidsLockType').value;
     const codeInput = view.querySelector('.kidsLockCode');
     const confirmInput = view.querySelector('.kidsLockConfirm');
-    const message = view.querySelector('.kidsLockMessage');
     const problem = codeProblem(lockType, codeInput.value, confirmInput.value);
     if (problem) {
-        message.style.color = '#ff6b6b';
-        setText(message, problem);
+        setLockMessage(view, problem, true);
         return;
     }
 
@@ -349,20 +346,18 @@ function saveLock(view) {
             codeInput.value = '';
             confirmInput.value = '';
             renderLock(view, status);
-            message.style.color = '';
-            setText(message, 'Saved.');
+            setLockMessage(view, 'Saved.', false);
         })
         .catch((response) => {
-            message.style.color = '#ff6b6b';
             if (response && response.status === 400 && typeof response.json === 'function') {
                 return response.json().then((problemDetails) => {
                     const errors = (problemDetails && problemDetails.errors) || {};
                     const first = errors.Code || errors.LockType;
-                    setText(message, first ? first[0] : 'The code was refused.');
-                }, () => setText(message, 'The code was refused.'));
+                    setLockMessage(view, first ? first[0] : 'The code was refused.', true);
+                }, () => setLockMessage(view, 'The code was refused.', true));
             }
 
-            setText(message, null);
+            setLockMessage(view, null);
             Dashboard.alert({ title: 'Kids', message: 'Could not save the parent lock.' });
             return undefined;
         })
@@ -387,7 +382,7 @@ function removeLock(view) {
                 Dashboard.alert({ title: 'Kids', message: 'Could not remove the parent lock.' });
             })
             .finally(() => {
-                setText(view.querySelector('.kidsLockMessage'), null);
+                setLockMessage(view, null);
                 Dashboard.hideLoadingMsg();
             });
     });
@@ -405,8 +400,8 @@ export default function (view) {
         saveDayStart(view);
     });
     view.addEventListener('viewshow', () => {
+        load(view);
         loadLock(view);
         loadDayStart(view).catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not load the screen time setting.' }));
-        load(view);
     });
 }

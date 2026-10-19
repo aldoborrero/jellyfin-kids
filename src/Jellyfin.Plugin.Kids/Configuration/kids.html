@@ -7,94 +7,144 @@
 <body>
     <!-- Served without authentication: static markup only, everything is loaded by kids.js -->
     <div id="KidsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsJs">
+        <!-- Layout only: colours come from Jellyfin's theme variables and classes, so every theme works -->
+        <style>
+            #KidsPage .kidsUserRow, #KidsPage .kidsLockRow { cursor: default; }
+            #KidsPage .kidsUserRow .listItemBody { min-width: 0; }
+            #KidsPage .kidsUserName { white-space: normal; overflow-wrap: anywhere; }
+            #KidsPage .kidsAvatar { width: 2.86em; height: 2.86em; min-width: 2.86em; min-height: 2.86em; border-radius: 50%; margin: 0.7em 0.29em 0.7em 0.715em; }
+            #KidsPage .kidsUserRow > .listItemIcon { margin: 0.5em 0.2em 0.5em 0.5em; }
+            #KidsPage .kidsKidCheckbox { width: auto; flex-shrink: 0; margin: 0 0.75em; }
+            #KidsPage .kidsEdit { flex-shrink: 0; margin: 0; padding: 0.6em 0.8em; }
+            #KidsPage .kidsEdit .material-icons { margin-right: 0.35em; }
+            #KidsPage .kidsWarning { color: var(--jf-palette-warning-main); }
+            #KidsPage .kidsWarning .material-icons { font-size: 1.1em; vertical-align: text-bottom; margin-right: 0.2em; }
+            #KidsPage .kidsError, #KidsPage .kidsLockError, #KidsPage .kidsLockMessage.kidsProblem { color: var(--jf-palette-error-main); }
+            #KidsPage .kidsLockRow .listItemButton { margin-right: 0.5em; }
+            #KidsPage .kidsLockRemoteHelp { display: flex; flex-wrap: wrap; gap: 0.3em 1.5em; margin: -0.8em 0 1.8em; }
+            #KidsPage .kidsLockRemoteHelp[hidden] { display: none; }
+            #KidsPage .kidsLockRemoteHelp b { font-weight: 600; color: var(--jf-palette-text-primary); margin-right: 0.3em; }
+            #KidsPage .kidsLockForm { margin-top: 1.5em; }
+            @media all and (max-width: 40em) {
+                #KidsPage .kidsEditLabel { display: none; }
+                #KidsPage .kidsEdit .material-icons { margin-right: 0; }
+                #KidsPage .kidsKidCheckbox { margin: 0 0.25em; }
+            }
+        </style>
         <div data-role="content">
             <div class="content-primary">
-                <h2>Kids</h2>
-                <p class="fieldDescription">
-                    Mark the Jellyfin users who are kids. Kids get the kids mode of clients such as Wholphin, with
-                    the settings you choose here.
-                </p>
-                <div class="verticalSection kidsLockSection">
-                    <h3 class="sectionTitle">Parent lock</h3>
-                    <p class="kidsLockStatus"></p>
-                    <p class="fieldDescription kidsLockAdvice" hidden>
-                        Set a code so grown-ups can unlock kids mode on TVs. Without one, only an administrator
-                        sign-in can change kids settings from a TV.
-                    </p>
-                    <p class="kidsLockError" hidden style="color: #ff6b6b;"></p>
-                    <form class="kidsLockForm">
-                        <div class="selectContainer">
-                            <label class="selectLabel" for="kidsLockType">Type</label>
-                            <select is="emby-select" id="kidsLockType" class="kidsLockType">
-                                <option value="REMOTE">Remote buttons</option>
-                                <option value="NUMERIC">Digits</option>
-                            </select>
+                <div class="readOnlyContent">
+                    <div class="verticalSection">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h2 class="sectionTitle">Kids</h2>
                         </div>
-                        <p class="fieldDescription kidsLockRemoteHelp">
-                            Use U D L R (arrows), 0–9, r g y b (colour buttons), p (play/pause), w (rewind),
-                            f (fast-forward), + and − (channel up and down), i (info). Codes are case-sensitive.
+                        <p class="fieldDescription">
+                            Mark the Jellyfin users who are kids. Kids get the kids mode of clients such as Wholphin,
+                            with the settings you choose here.
                         </p>
-                        <div class="inputContainer">
-                            <label class="inputLabel" for="kidsLockCode">New code</label>
-                            <input is="emby-input" type="password" id="kidsLockCode" class="kidsLockCode" autocomplete="off" maxlength="32" />
-                        </div>
-                        <div class="inputContainer">
-                            <label class="inputLabel" for="kidsLockConfirm">Repeat the code</label>
-                            <input is="emby-input" type="password" id="kidsLockConfirm" class="kidsLockConfirm" autocomplete="off" maxlength="32" />
-                            <div class="fieldDescription">Longer codes are safer; TVs keep a copy to unlock offline.</div>
-                        </div>
-                        <p class="kidsLockMessage" hidden></p>
-                        <button is="emby-button" type="submit" class="raised button-submit kidsLockSave">
-                            <span>Save code</span>
-                        </button>
-                        <button is="emby-button" type="button" class="raised kidsLockRemove" style="display: none;">
-                            <span>Remove the lock</span>
-                        </button>
-                    </form>
-                </div>
+                    </div>
 
-                <div class="verticalSection kidsScreenTimeSection">
-                    <h3 class="sectionTitle">Screen time</h3>
-                    <form class="kidsDayStartForm">
-                        <div class="selectContainer">
-                            <label class="selectLabel" for="kidsDayStart">Day starts at</label>
-                            <select is="emby-select" id="kidsDayStart" class="kidsDayStart">
-                                <option value="0">00:00</option>
-                                <option value="1">01:00</option>
-                                <option value="2">02:00</option>
-                                <option value="3">03:00</option>
-                                <option value="4">04:00</option>
-                                <option value="5">05:00</option>
-                                <option value="6">06:00</option>
-                                <option value="7">07:00</option>
-                                <option value="8">08:00</option>
-                                <option value="9">09:00</option>
-                                <option value="10">10:00</option>
-                                <option value="11">11:00</option>
-                                <option value="12">12:00</option>
-                                <option value="13">13:00</option>
-                                <option value="14">14:00</option>
-                                <option value="15">15:00</option>
-                                <option value="16">16:00</option>
-                                <option value="17">17:00</option>
-                                <option value="18">18:00</option>
-                                <option value="19">19:00</option>
-                                <option value="20">20:00</option>
-                                <option value="21">21:00</option>
-                                <option value="22">22:00</option>
-                                <option value="23">23:00</option>
-                            </select>
-                            <div class="fieldDescription">Each kid's screen time starts again from zero at this hour, server time.</div>
+                    <div class="verticalSection verticalSection-extrabottompadding kidsUsersSection">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h3 class="sectionTitle">Users</h3>
                         </div>
-                        <button is="emby-button" type="submit" class="raised button-submit kidsDayStartSave">
-                            <span>Save</span>
-                        </button>
-                    </form>
-                </div>
+                        <p class="fieldDescription">Tick Kid for each child, then open their settings for screen time and the home screen.</p>
+                        <p class="kidsError" style="display: none;"></p>
+                        <div class="kidsUsers paperList"></div>
+                    </div>
 
-                <h3 class="sectionTitle">Users</h3>
-                <p class="kidsError" style="display: none; color: #ff6b6b;"></p>
-                <div class="kidsUsers paperList"></div>
+                    <div class="verticalSection verticalSection-extrabottompadding kidsLockSection">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h3 class="sectionTitle">Parent lock</h3>
+                        </div>
+                        <p class="fieldDescription">The code grown-ups enter on a TV to leave kids mode or change its settings.</p>
+                        <p class="kidsLockError" hidden></p>
+                        <div class="paperList">
+                            <div class="listItem kidsLockRow" data-action="none">
+                                <span class="material-icons listItemIcon kidsLockIcon lock_open" aria-hidden="true"></span>
+                                <div class="listItemBody two-line">
+                                    <div class="listItemBodyText kidsLockStatus"></div>
+                                    <div class="listItemBodyText secondary kidsLockChanged" hidden></div>
+                                    <div class="listItemBodyText secondary kidsLockAdvice" hidden>
+                                        Set a code so grown-ups can unlock kids mode on TVs. Without one, only an
+                                        administrator sign-in can change kids settings from a TV.
+                                    </div>
+                                </div>
+                                <button is="emby-button" type="button" class="raised listItemButton kidsLockRemove" style="display: none;">
+                                    <span>Remove</span>
+                                </button>
+                            </div>
+                        </div>
+                        <form class="kidsLockForm">
+                            <div class="selectContainer">
+                                <select is="emby-select" id="kidsLockType" class="kidsLockType" label="Type">
+                                    <option value="REMOTE">Remote buttons</option>
+                                    <option value="NUMERIC">Digits</option>
+                                </select>
+                            </div>
+                            <div class="fieldDescription kidsLockRemoteHelp">
+                                <span><b>U D L R</b>arrows</span>
+                                <span><b>0–9</b>digits</span>
+                                <span><b>r g y b</b>colour buttons</span>
+                                <span><b>p w f</b>play/pause, rewind, fast-forward</span>
+                                <span><b>+ −</b>channel up, down</span>
+                                <span><b>i</b>info</span>
+                            </div>
+                            <div class="inputContainer">
+                                <input is="emby-input" type="password" id="kidsLockCode" class="kidsLockCode" label="New code" autocomplete="off" maxlength="32" />
+                                <div class="fieldDescription">4 to 32 symbols, case-sensitive. Longer codes are safer.</div>
+                            </div>
+                            <div class="inputContainer">
+                                <input is="emby-input" type="password" id="kidsLockConfirm" class="kidsLockConfirm" label="Repeat the code" autocomplete="off" maxlength="32" />
+                                <div class="fieldDescription">TVs keep a copy to unlock offline.</div>
+                            </div>
+                            <p class="kidsLockMessage" hidden></p>
+                            <button is="emby-button" type="submit" class="raised button-submit block kidsLockSave">
+                                <span>Save code</span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="verticalSection kidsScreenTimeSection">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h3 class="sectionTitle">Screen time</h3>
+                        </div>
+                        <form class="kidsDayStartForm">
+                            <div class="selectContainer">
+                                <select is="emby-select" id="kidsDayStart" class="kidsDayStart" label="Day starts at">
+                                    <option value="0">00:00</option>
+                                    <option value="1">01:00</option>
+                                    <option value="2">02:00</option>
+                                    <option value="3">03:00</option>
+                                    <option value="4">04:00</option>
+                                    <option value="5">05:00</option>
+                                    <option value="6">06:00</option>
+                                    <option value="7">07:00</option>
+                                    <option value="8">08:00</option>
+                                    <option value="9">09:00</option>
+                                    <option value="10">10:00</option>
+                                    <option value="11">11:00</option>
+                                    <option value="12">12:00</option>
+                                    <option value="13">13:00</option>
+                                    <option value="14">14:00</option>
+                                    <option value="15">15:00</option>
+                                    <option value="16">16:00</option>
+                                    <option value="17">17:00</option>
+                                    <option value="18">18:00</option>
+                                    <option value="19">19:00</option>
+                                    <option value="20">20:00</option>
+                                    <option value="21">21:00</option>
+                                    <option value="22">22:00</option>
+                                    <option value="23">23:00</option>
+                                </select>
+                                <div class="fieldDescription">Each kid's screen time starts again from zero at this hour, server time.</div>
+                            </div>
+                            <button is="emby-button" type="submit" class="raised button-submit block kidsDayStartSave">
+                                <span>Save</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -1,6 +1,6 @@
-// The kid settings editor: search, autoplay and its limit, the daily screen-time allowance, the session limit, home
-// sections (order and visibility) and the picked collections and playlists. Saves with the loaded revision; a conflict
-// never overwrites.
+// The kid settings editor: the daily screen-time allowance, the session limit and today's bonus minutes; search,
+// autoplay and its limit; home sections (order and visibility); and the picked collections and playlists. Saves with
+// the loaded revision; a conflict never overwrites. Bonus minutes are added straight away, apart from the save.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -55,6 +55,36 @@ function move(list, index, offset) {
 
 function pickTypeName(type) {
     return type === 'Playlist' ? 'Playlist' : 'Collection';
+}
+
+function pickIcon(type) {
+    const icon = element('span', 'material-icons listItemIcon ' + (type === 'Playlist' ? 'playlist_play' : 'video_library'));
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+}
+
+// A list row that is not itself clickable: its controls are
+function row(className) {
+    const item = element('div', 'listItem kidsRow' + (className ? ' ' + className : ''));
+    item.dataset.action = 'none';
+    return item;
+}
+
+// Today's screen time, from GET Status or the answer to a bonus
+
+function minutes(seconds) {
+    return Math.floor(seconds / 60);
+}
+
+function usageText(status) {
+    const used = minutes(status.UsedSeconds);
+    if (status.AllowanceSeconds === undefined || status.AllowanceSeconds === null) {
+        return 'Today: ' + used + ' min (no daily limit)';
+    }
+
+    const bonus = status.BonusSeconds > 0 ? ' + ' + minutes(status.BonusSeconds) + ' min bonus' : '';
+    const of = 'Today: ' + used + ' of ' + minutes(status.AllowanceSeconds) + ' min' + bonus;
+    return status.TimeUp ? of + ' · time is up' : of + ' · ' + minutes(status.RemainingSeconds) + ' min left';
 }
 
 export default function (view, params) {
@@ -158,10 +188,8 @@ export default function (view, params) {
     function renderSections() {
         const list = view.querySelector('.kidsSections');
         list.replaceChildren(...sections.map((entry, index) => {
-            const item = element('div', 'listItem listItem-border');
-            const label = element('label', 'checkboxContainer');
-            label.style.flexGrow = '1';
-            label.style.textAlign = 'start';
+            const item = row('listItem-border');
+            const label = element('label');
             const checkbox = element('input');
             checkbox.type = 'checkbox';
             checkbox.setAttribute('is', 'emby-checkbox');
@@ -181,16 +209,17 @@ export default function (view, params) {
     function renderPicks() {
         const list = view.querySelector('.kidsPicks');
         if (picks.length === 0) {
-            list.replaceChildren(element('div', 'fieldDescription', 'Nothing picked yet.'));
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Nothing picked yet.'));
             return;
         }
 
         list.replaceChildren(...picks.map((pick, index) => {
-            const item = element('div', 'listItem listItem-border');
+            const item = row('listItem-border');
             const body = element('div', 'listItemBody two-line');
             body.append(element('div', 'listItemBodyText', pick.missing ? 'Missing (deleted from the server)' : pick.Name));
             body.append(element('div', 'listItemBodyText secondary', pick.missing ? pick.Id : pickTypeName(pick.Type)));
             item.append(
+                pickIcon(pick.Type),
                 body,
                 iconButton('arrow_upward', 'Move up', () => { move(picks, index, -1); renderPicks(); }, index === 0),
                 iconButton('arrow_downward', 'Move down', () => { move(picks, index, 1); renderPicks(); }, index === picks.length - 1),
@@ -203,18 +232,18 @@ export default function (view, params) {
         if (candidates.length === 0) {
             results.replaceChildren(element(
                 'div',
-                'fieldDescription',
+                'fieldDescription kidsEmpty',
                 term ? 'No collections or playlists match.' : 'This server has no collections or playlists yet.'));
             return;
         }
 
         results.replaceChildren(...candidates.map((candidate) => {
             const picked = picks.some((pick) => pick.Id === candidate.Id);
-            const item = element('div', 'listItem');
+            const item = row();
             const body = element('div', 'listItemBody two-line');
             body.append(element('div', 'listItemBodyText', candidate.Name));
             body.append(element('div', 'listItemBodyText secondary', pickTypeName(candidate.Type) + (picked ? ' · already picked' : '')));
-            item.append(body, iconButton('add', 'Add ' + candidate.Name, () => {
+            item.append(pickIcon(candidate.Type), body, iconButton('add', 'Add ' + candidate.Name, () => {
                 if (!picks.some((pick) => pick.Id === candidate.Id)) {
                     picks.push({ Id: candidate.Id, Name: candidate.Name, Type: candidate.Type, missing: false });
                     renderPicks();
@@ -235,7 +264,7 @@ export default function (view, params) {
                     renderResults(candidates, term);
                 }
             })
-            .catch(() => results.replaceChildren(element('div', 'fieldDescription', 'Could not search the library.')));
+            .catch(() => results.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Could not search the library.')));
     }
 
     function applyProfile(profile) {
@@ -269,6 +298,58 @@ export default function (view, params) {
             });
     }
 
+    const usageLine = view.querySelector('.kidsUsageLine');
+    const bonusInput = view.querySelector('.kidsBonusMinutes');
+    const bonusAdd = view.querySelector('.kidsBonusAdd');
+    const bonusError = view.querySelector('.kidsBonusError');
+
+    function setBonusError(text) {
+        bonusError.textContent = text || '';
+        bonusError.hidden = !text;
+    }
+
+    function loadUsage() {
+        usageLine.textContent = 'Today: …';
+        // Never show 0 when the status could not be read
+        request('GET', 'Kids/Users/' + userId + '/Status')
+            .then((status) => {
+                usageLine.textContent = usageText(status);
+            })
+            .catch(() => {
+                usageLine.textContent = 'Usage unavailable';
+            });
+    }
+
+    function addBonus() {
+        setBonusError(null);
+        const value = Number(bonusInput.value.trim());
+        if (bonusInput.value.trim() === '' || !Number.isInteger(value) || value < 1 || value > 240) {
+            setBonusError('Between 1 and 240 minutes.');
+            return;
+        }
+
+        bonusAdd.disabled = true;
+        request('POST', 'Kids/Users/' + userId + '/WatchTime/Bonus', { Minutes: value })
+            .then((status) => {
+                bonusInput.value = '';
+                usageLine.textContent = usageText(status);
+            })
+            .catch((response) => {
+                if (response && response.status === 400 && typeof response.json === 'function') {
+                    return response.json().then((problemDetails) => {
+                        const errors = (problemDetails && problemDetails.errors) || {};
+                        setBonusError(errors.Minutes ? errors.Minutes[0] : 'The bonus was refused.');
+                    }, () => setBonusError('The bonus was refused.'));
+                }
+
+                Dashboard.alert({ title: 'Kids', message: 'Could not add bonus time.' });
+                return undefined;
+            })
+            .finally(() => {
+                bonusAdd.disabled = false;
+            });
+    }
+
     function load() {
         Dashboard.showLoadingMsg();
         showMessage(null);
@@ -278,6 +359,7 @@ export default function (view, params) {
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 return applyProfile(profile).then(() => {
                     form.hidden = false;
+                    loadUsage();
                     search();
                 });
             })
@@ -325,7 +407,10 @@ export default function (view, params) {
                 if (status === 409) {
                     return response.json().then((current) => {
                         conflictProfile = current;
-                        view.querySelector('.kidsConflict').hidden = false;
+                        const banner = view.querySelector('.kidsConflict');
+                        banner.hidden = false;
+                        // The save button is at the bottom of a long form; bring the banner into view
+                        banner.scrollIntoView({ block: 'center' });
                     });
                 }
 
@@ -347,6 +432,14 @@ export default function (view, params) {
     }
 
     form.addEventListener('submit', save);
+    bonusAdd.addEventListener('click', addBonus);
+    bonusInput.addEventListener('keydown', (event) => {
+        // Enter adds the bonus instead of saving the whole form
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addBonus();
+        }
+    });
     autoplayInput.addEventListener('change', renderCap);
     capInput.addEventListener('input', renderCap);
     searchInput.addEventListener('input', () => {
