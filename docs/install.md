@@ -10,7 +10,7 @@ Requires Jellyfin 12.0 or later.
 1. In Jellyfin, open **Dashboard → Plugins** and select **Manage Repositories**.
 2. Select **New Repository** (the **+** button) and enter:
    - **Repository Name**: `Jellyfin Kids`
-   - **Repository URL**: `https://aldoborrero.github.io/jellyfin-kids/manifest.json`
+   - **Repository URL**: `https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json`
 3. Save.
 
 ## Install the plugin
@@ -41,8 +41,8 @@ For the maintainer. Pushing a version tag runs [`release.yml`](../.github/workfl
 which tests and packages the plugin, creates the GitHub release with the zip, and prepends the version to
 `manifest.json` on the `gh-pages` branch.
 
-One-time setup: once the first release has created the `gh-pages` branch, enable Pages in
-**Settings → Pages** with **Source: Deploy from a branch**, branch `gh-pages`, folder `/ (root)`.
+Jellyfin reads the manifest straight from the branch through `raw.githubusercontent.com`, so GitHub
+Pages is not needed.
 
 For each release:
 
