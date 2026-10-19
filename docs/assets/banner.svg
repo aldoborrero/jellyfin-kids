@@ -1,0 +1,69 @@
+<!--
+  Jellyfin Kids banner. It includes the Jellyfin logo (icon-transparent.svg from
+  https://github.com/jellyfin/jellyfin-ux, copyright the Jellyfin contributors), which is licensed
+  under CC BY-SA 4.0. This banner is a derivative work and is licensed under CC BY-SA 4.0 as well:
+  http://creativecommons.org/licenses/by-sa/4.0/. Jellyfin Kids is not an official Jellyfin project.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">Jellyfin Kids</title>
+  <desc id="desc">The Jellyfin logo with a lock and a clock: kid profiles, a household parent lock and shared screen time, enforced by your Jellyfin server.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14102a"/>
+      <stop offset="1" stop-color="#0b1d33"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#aa5cc3"/>
+      <stop offset="1" stop-color="#00a4dc"/>
+    </linearGradient>
+    <linearGradient id="jf" gradientUnits="userSpaceOnUse" x1="110.25" y1="213.3" x2="496.14" y2="436.09">
+      <stop offset="0" stop-color="#aa5cc3"/>
+      <stop offset="1" stop-color="#00a4dc"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#aa5cc3" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#aa5cc3" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="400" rx="24" fill="url(#bg)"/>
+
+  <circle cx="1130" cy="70" r="150" fill="#00a4dc" opacity="0.08"/>
+  <circle cx="1210" cy="360" r="110" fill="#aa5cc3" opacity="0.10"/>
+  <circle cx="235" cy="205" r="195" fill="url(#glow)"/>
+
+  <!-- Jellyfin logo (CC BY-SA 4.0, Jellyfin contributors) -->
+  <g transform="translate(95 55) scale(0.56)">
+    <path d="M256,201.6c-20.4,0-86.2,119.3-76.2,139.4s142.5,19.9,152.4,0S276.5,201.6,256,201.6z" fill="url(#jf)"/>
+    <path d="M256,23.3c-61.6,0-259.8,359.4-229.6,420.1s429.3,60,459.2,0S317.6,23.3,256,23.3z M406.5,390.8c-19.6,39.3-281.1,39.8-300.9,0s110.1-275.3,150.4-275.3S426.1,351.4,406.5,390.8z" fill="url(#jf)"/>
+  </g>
+
+  <!-- clock badge -->
+  <g transform="translate(345 105)">
+    <circle cx="0" cy="0" r="38" fill="#0b1d33" stroke="#00a4dc" stroke-width="7"/>
+    <path d="M0 -20 L0 0 L15 9" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- lock badge -->
+  <g transform="translate(110 300)">
+    <circle cx="0" cy="0" r="44" fill="#0b1d33"/>
+    <path d="M-15 -6 V-17 A15 15 0 0 1 15 -17 V-6" fill="none" stroke="#aa5cc3" stroke-width="7" stroke-linecap="round"/>
+    <rect x="-24" y="-8" width="48" height="36" rx="9" fill="#aa5cc3"/>
+    <circle cx="0" cy="9" r="5.5" fill="#ffffff"/>
+  </g>
+
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="440" y="176" font-size="84" font-weight="700" fill="#ffffff" letter-spacing="-1">Jellyfin <tspan fill="url(#accent)">Kids</tspan></text>
+    <text x="444" y="232" font-size="30" fill="#c9c3e6">Kid profiles, a parent lock and shared screen time,</text>
+    <text x="444" y="272" font-size="30" fill="#c9c3e6">enforced by your Jellyfin server.</text>
+
+    <g font-size="20" font-weight="600">
+      <rect x="444" y="306" width="150" height="40" rx="20" fill="#ffffff" opacity="0.08"/>
+      <text x="519" y="332" text-anchor="middle" fill="#e6e1ff">Jellyfin 12.x</text>
+      <rect x="608" y="306" width="166" height="40" rx="20" fill="#ffffff" opacity="0.08"/>
+      <text x="691" y="332" text-anchor="middle" fill="#e6e1ff">Any client</text>
+      <rect x="788" y="306" width="182" height="40" rx="20" fill="#ffffff" opacity="0.08"/>
+      <text x="879" y="332" text-anchor="middle" fill="#e6e1ff">Data stays home</text>
+    </g>
+  </g>
+</svg>

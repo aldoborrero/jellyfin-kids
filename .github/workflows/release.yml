@@ -1,0 +1,88 @@
+name: Release
+
+# Push a tag vX.Y.Z.W matching build.yaml and Directory.Build.props to publish that version:
+# a GitHub Release with the plugin zip, and the repository manifest on GitHub Pages
+# (https://aldoborrero.github.io/jellyfin-kids/manifest.json, served from the gh-pages branch).
+on:
+  push:
+    tags: ['v*.*.*.*']
+
+permissions: {}
+
+# One release at a time, so two tags never race on the gh-pages branch
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and push the manifest to gh-pages
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test Jellyfin.Plugin.Kids.slnx --configuration Release
+
+      - name: Check out gh-pages
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git worktree add -B gh-pages pages FETCH_HEAD
+          else
+            git worktree add --orphan -b gh-pages pages
+          fi
+
+      - name: Package
+        id: package
+        run: scripts/release/package.sh --tag "$TAG" --manifest pages/manifest.json
+
+      - name: Write release notes
+        run: |
+          # The changelog from build.yaml, or the tag message when it is empty
+          yq '.changelog // ""' build.yaml >notes.md
+          if [[ -z $(tr -d '[:space:]' <notes.md) ]]; then
+            git fetch --depth=1 --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            git tag --list --format='%(contents)' "$TAG" >notes.md
+          fi
+          cat notes.md
+
+      - name: Create GitHub Release
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          MD5SUM: ${{ steps.package.outputs.md5sum }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A re-run: replace the assets, the manifest below picks up the new checksum
+            gh release upload "$TAG" "$ZIP" "$MD5SUM" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$MD5SUM" --verify-tag --title "Kids $VERSION" --notes-file notes.md
+          fi
+
+      - name: Publish manifest
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          MANIFEST: ${{ steps.package.outputs.manifest }}
+        working-directory: pages
+        run: |
+          cp "$MANIFEST" manifest.json
+          touch .nojekyll
+          git add manifest.json .nojekyll
+          if git diff --cached --quiet; then
+            echo "manifest.json unchanged"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Publish Kids $VERSION"
+          # From the main checkout, which holds the token actions/checkout persisted
+          git -C "$GITHUB_WORKSPACE" push origin gh-pages
