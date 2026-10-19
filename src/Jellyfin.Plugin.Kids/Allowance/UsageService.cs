@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Events;
 using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
@@ -45,6 +46,11 @@ public sealed class UsageService : IDisposable
         _time = time;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Raised after a bonus or a report changed a kid's time, so enforcement reloads the kid. Handlers must not throw.
+    /// </summary>
+    public event EventHandler<GenericEventArgs<Guid>>? UsageChanged;
 
     /// <summary>
     /// Gets how many (kid, day) amounts are waiting to be stored.
@@ -246,6 +252,7 @@ public sealed class UsageService : IDisposable
         var now = _time.GetUtcNow();
         var day = DayClock.Format(CurrentDayClock().DayOf(now));
         await _store.AddBonusAsync(userId, day, minutes.Value, caller.LogName, now, cancellationToken).ConfigureAwait(false);
+        UsageChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
         var status = await StatusAsync(userId, profile.Settings.DailyAllowanceMinutes, cancellationToken).ConfigureAwait(false);
         return new UsageResult(UsageOutcome.Saved, status);
     }
@@ -277,6 +284,7 @@ public sealed class UsageService : IDisposable
             .Select(s => (s.Id!, DayClock.Format(clock.DayOf(s.StartedAt!.Value)), s.StartedAt.Value, s.Seconds!.Value))
             .ToList();
         await _store.AddSegmentsAsync(userId, rows, now, cancellationToken).ConfigureAwait(false);
+        UsageChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
         var status = await StatusAsync(userId, profile.Settings.DailyAllowanceMinutes, cancellationToken).ConfigureAwait(false);
         return new UsageResult(UsageOutcome.Saved, status);
     }

@@ -46,7 +46,9 @@ answers 404, so a purge that failed after the unmark can be retried.
   numbers.
 - **`NextDayStartsAt`** is the next "day starts at" boundary (server local time, given in UTC).
 - **403**: another non-admin user. **404**: not a kid. **500**: the store is unavailable, never "0 used".
-- Allowed hours (`WithinSchedule`, `NextAllowedAt`) are added by feature 5. They are additive.
+- Allowed hours (`WithinSchedule`, `NextAllowedAt`) were planned for feature 5. Feature 5 added `Enforced`,
+  `DeniedReason` (`outsideSchedule` among others), `DeniedUntil` and the sitting fields instead
+  ([contract](../../005-kids-enforcement/contracts/kids-api-v1-enforcement.md)). They are additive.
 
 ## POST /Kids/Users/{userId}/WatchTime/Bonus
 

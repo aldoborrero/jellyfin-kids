@@ -43,3 +43,8 @@ The client counts a sitting **locally, per device**:
   changed value from its next profile read.
 
 A server-enforced session cap may come later (plan §7 feature 6) under its own capability.
+
+**Update (feature 5, plugin 0.0.5.0):** with the `sitting` capability the server also counts a sitting, per kid across
+all devices, with a household break, reports it in Status and, when enforcement is on, stops and refuses playback at
+the limit. See [feature 5's contract](../../005-kids-enforcement/contracts/kids-api-v1-enforcement.md). The rules
+above still hold for servers without that capability.

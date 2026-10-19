@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Auth;
+using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Profiles;
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
@@ -33,6 +34,7 @@ public class KidsController : ControllerBase
     private readonly KidProfileService _profiles;
     private readonly IPickCatalog _pickCatalog;
     private readonly UsageService _usage;
+    private readonly GateCoverage _coverage;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidsController"/> class.
@@ -41,24 +43,30 @@ public class KidsController : ControllerBase
     /// <param name="profiles">The kid profile service.</param>
     /// <param name="pickCatalog">The server's collections and playlists.</param>
     /// <param name="usage">The screen-time service, for purging on unmark.</param>
-    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog, UsageService usage)
+    /// <param name="coverage">The playback routes enforcement guards, for the plugin information.</param>
+    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog, UsageService usage, GateCoverage coverage)
     {
         _callers = callers;
         _profiles = profiles;
         _pickCatalog = pickCatalog;
         _usage = usage;
+        _coverage = coverage;
     }
 
     /// <summary>
     /// Lets clients detect the plugin, even before signing in.
     /// </summary>
     /// <response code="200">The plugin is installed.</response>
-    /// <returns>The plugin version, API version and features.</returns>
+    /// <returns>The plugin version, API version, features and whether playback routes are guarded.</returns>
     [HttpGet("Info")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<KidsInfo> GetInfo()
-        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: KidsInfo.SupportedFeatures);
+        => new KidsInfo(
+            Plugin.Instance?.Version.ToString() ?? string.Empty,
+            ApiVersion: 1,
+            Features: KidsInfo.SupportedFeatures,
+            Enforcement: EnforcementInfo.From(_coverage));
 
     /// <summary>
     /// Lists the kids, so a user switcher can tell who they are.

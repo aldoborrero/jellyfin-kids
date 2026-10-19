@@ -52,10 +52,40 @@ and for installing a release by hand.
 | **Kid profiles** | Mark any Jellyfin user as a kid, with their own home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
 | **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today. |
+| **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only Wholphin. Off until you turn it on; see [Enforcement](#enforcement). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
 | **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. |
 | **Cleanup** | A deleted user's kid profile and usage go with them, and usage older than 90 days is pruned daily. |
+
+## Enforcement
+
+Enforcement is off after installing or updating. Turn it on per household in the plugin configuration (the
+dashboard control comes with the next dashboard update):
+
+```sh
+curl -s -H "Authorization: MediaBrowser Token=\"$ADMIN_TOKEN\"" "$JELLYFIN/Plugins/d62ee188270c49d8b7b95e524fec2335/Configuration" \
+  | jq '.EnforcementEnabled = true' \
+  | curl -s -X POST -H "Authorization: MediaBrowser Token=\"$ADMIN_TOKEN\"" -H 'Content-Type: application/json' \
+      -d @- "$JELLYFIN/Plugins/d62ee188270c49d8b7b95e524fec2335/Configuration"
+```
+
+`SittingBreakMinutes` (default 15) is how long a kid must have nothing playing for a new sitting to start.
+
+With enforcement on, for kids only:
+
+- 5 and 1 minutes before the allowance, the sitting or the allowed hours end, each playing app shows a notice.
+- When one ends, the app shows a message, and about 5 seconds later the server stops it, ends its transcodes and
+  live streams, cuts the streams it is sending and ends the playback on the server. If the app keeps playing, the
+  server stops it again, at most every 10 seconds.
+- New playback is refused: jellyfin-web shows "Playback of this media is not allowed", other routes answer 403 with
+  `X-Application-Error-Code: PlaybackNotAllowed`. Browsing, search and the rest of Jellyfin keep working.
+- A bonus, the end of the break or the next day lifts it at once.
+
+Limits: an app that ignores the stop keeps playing what it has already downloaded (about 35 seconds for a browser in
+our tests). A stream address with no token and no device id can't be tied to a kid, and DLNA renderers and offline
+downloads are out of reach. `GET /Kids/Info` reports whether every playback route could be guarded on your Jellyfin
+version.
 
 ## How it works
 
@@ -64,9 +94,10 @@ Jellyfin Kids builds on what Jellyfin already does instead of copying it:
 | Jellyfin keeps doing | Jellyfin Kids adds |
 |---|---|
 | Library access, parental ratings, unrated items, tags | Which users are kids, and their kids mode settings |
-| Allowed hours (access schedules) | A daily allowance and bonus time |
+| Allowed hours (access schedules) | A daily allowance, bonus time and a sitting limit |
 | Sign-in and authorization | A household parent code and short-lived parent grants |
-| Playback sessions and events | Counting kids' screen time from those events |
+| Playback sessions and events | Counting kids' screen time from those events, and stopping playback when it runs out |
+| Playback and stream routes | A filter on those routes only, which refuses a kid who may not play now |
 
 Plugin data lives in a small SQLite database in the plugin's data folder. Admins and API keys are never
 blocked, and disabling the plugin removes everything it enforces.
@@ -87,6 +118,8 @@ The client API lives under `/Kids` and is versioned (`ApiVersion` in `GET /Kids/
 - [Profiles and detection](specs/001-kids-plugin-foundation/contracts/kids-api-v1.md)
 - [Parent lock and grants](specs/002-kids-parent-lock/contracts/kids-api-v1-parent-lock.md)
 - [Daily allowance](specs/003-kids-allowance-tracking/contracts/kids-api-v1-allowance.md)
+- [Session limit](specs/004-kids-session-limit/contracts/kids-api-v1-session-limit.md)
+- [Enforcement and the sitting](specs/005-kids-enforcement/contracts/kids-api-v1-enforcement.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 
@@ -104,7 +137,8 @@ The dev loop:
 
 1. `plugin` builds the plugin and installs it in `.dev/data/plugins/` with a `meta.json` made from
    `build.yaml`.
-2. `jellyfin` runs the server on <http://127.0.0.1:8096>, with its data, config, cache and logs under
+2. `jellyfin` runs the server on <http://127.0.0.1:8096> (`JELLYFIN_KIDS_PORT` picks another port, for example to
+   run two dev loops: `JELLYFIN_KIDS_PORT=8196 dev -p 8197`), with its data, config, cache and logs under
    `.dev/`. It listens on localhost only; the Android emulator reaches it at `http://10.0.2.2:8096`.
 3. `provision` finishes the startup wizard and creates the dev users: admin `admin` / `admin` and the
    kids `alice` and `bob` (`DEV_ADMIN_USER`, `DEV_ADMIN_PASSWORD` and `DEV_KIDS` change them). It also
@@ -117,7 +151,7 @@ Tests:
 
 ```sh
 dotnet test                # unit tests
-scripts/dev-check.sh       # checks against the running dev server: auth, answers, playback counting, pages
+scripts/dev-check.sh       # checks against the running dev server: auth, answers, playback counting, pages, enforcement
 ```
 
 Features are planned with [spec-kit](https://github.com/github/spec-kit) under [specs/](specs/), following
@@ -130,7 +164,7 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 - [x] Household parent code with server-side checks and grants
 - [x] Daily allowance counted on the server
 - [x] Per-kid sitting limit
-- [ ] Stop playback when time is up, on every client
+- [x] Stop playback when time is up, on every client (opt-in)
 - [ ] Recommended restrictions in one step, an allowed-hours editor, and picks backed by Jellyfin collections
 - [ ] Per-kid codes, viewing history, and export and import of plugin data
 

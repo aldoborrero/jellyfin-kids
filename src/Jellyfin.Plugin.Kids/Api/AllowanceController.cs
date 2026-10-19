@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Jellyfin.Extensions.Json;
 using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Auth;
+using Jellyfin.Plugin.Kids.Enforcement;
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -28,6 +29,9 @@ public class AllowanceController : ControllerBase
 {
     private readonly CallerResolver _callers;
     private readonly UsageService _usage;
+    private readonly EnforcementState _enforcement;
+    private readonly EnforcementService _enforcementLoader;
+    private readonly TimeProvider _time;
     private readonly ILogger<AllowanceController> _logger;
 
     /// <summary>
@@ -35,11 +39,23 @@ public class AllowanceController : ControllerBase
     /// </summary>
     /// <param name="callers">Resolves the caller and any parent grant.</param>
     /// <param name="usage">The screen-time service.</param>
+    /// <param name="enforcement">The kids' enforcement state, for the status.</param>
+    /// <param name="enforcementLoader">Reloads a kid after a change, so the answer already reflects it.</param>
+    /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
-    public AllowanceController(CallerResolver callers, UsageService usage, ILogger<AllowanceController> logger)
+    public AllowanceController(
+        CallerResolver callers,
+        UsageService usage,
+        EnforcementState enforcement,
+        EnforcementService enforcementLoader,
+        TimeProvider time,
+        ILogger<AllowanceController> logger)
     {
         _callers = callers;
         _usage = usage;
+        _enforcement = enforcement;
+        _enforcementLoader = enforcementLoader;
+        _time = time;
         _logger = logger;
     }
 
@@ -67,7 +83,7 @@ public class AllowanceController : ControllerBase
 
         // A store failure propagates as a 500: never "0 used"
         var status = await _usage.GetStatusAsync(userId, cancellationToken).ConfigureAwait(false);
-        return status is null ? NotAKid() : KidStatusDto.From(status);
+        return status is null ? NotAKid() : KidStatusDto.From(status, _enforcement.Describe(userId, _time.GetUtcNow()));
     }
 
     /// <summary>
@@ -103,7 +119,7 @@ public class AllowanceController : ControllerBase
             _logger.LogInformation("Bonus of {Minutes} min for {UserId} by {Caller}", request.Minutes, userId, caller.LogName);
         }
 
-        return ToResponse(result);
+        return await ToResponseAsync(userId, result).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -134,15 +150,22 @@ public class AllowanceController : ControllerBase
         }
 
         var result = await _usage.ReportAsync(userId, request.ToInput(), cancellationToken).ConfigureAwait(false);
-        return ToResponse(result);
+        return await ToResponseAsync(userId, result).ConfigureAwait(false);
     }
 
-    private ActionResult<KidStatusDto> ToResponse(UsageResult result) => result.Outcome switch
+    private async Task<ActionResult<KidStatusDto>> ToResponseAsync(Guid userId, UsageResult result)
     {
-        UsageOutcome.Saved => KidStatusDto.From(result.Status!),
-        UsageOutcome.Invalid => BadRequest(new ValidationProblemDetails(result.Errors!.ToDictionary(e => e.Key, e => e.Value))),
-        _ => NotAKid()
-    };
+        if (result.Outcome == UsageOutcome.Saved)
+        {
+            // Reload before answering, so a bonus that lifts time's up is already in the answer and the next request
+            await _enforcementLoader.TryLoadAsync(userId).ConfigureAwait(false);
+            return KidStatusDto.From(result.Status!, _enforcement.Describe(userId, _time.GetUtcNow()));
+        }
+
+        return result.Outcome == UsageOutcome.Invalid
+            ? BadRequest(new ValidationProblemDetails(result.Errors!.ToDictionary(e => e.Key, e => e.Value)))
+            : NotAKid();
+    }
 
     private NotFoundObjectResult NotAKid()
         => NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = "This user is not a kid." });

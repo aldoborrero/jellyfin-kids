@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Kids.Allowance;
+using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
 using MediaBrowser.Controller.Library;
@@ -31,6 +32,8 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
     private readonly KidProfileService _profiles;
     private readonly KidsDatabase _database;
     private readonly UsageService _usage;
+    private readonly EnforcementState _enforcement;
+    private readonly PlaybackEnforcer _enforcer;
     private readonly TimeProvider _time;
     private readonly ILogger<PlaybackTracker> _logger;
     private readonly Lock _lock = new();
@@ -47,6 +50,8 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
     /// <param name="profiles">The kid profiles, to load the roster.</param>
     /// <param name="database">The plugin database.</param>
     /// <param name="usage">The screen-time service.</param>
+    /// <param name="enforcement">The kids' limits in memory, fed with the same counted time.</param>
+    /// <param name="enforcer">Acts on kids' sessions when a limit is near or reached.</param>
     /// <param name="time">The clock.</param>
     /// <param name="logger">The logger.</param>
     public PlaybackTracker(
@@ -55,6 +60,8 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         KidProfileService profiles,
         KidsDatabase database,
         UsageService usage,
+        EnforcementState enforcement,
+        PlaybackEnforcer enforcer,
         TimeProvider time,
         ILogger<PlaybackTracker> logger)
     {
@@ -63,6 +70,8 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         _profiles = profiles;
         _database = database;
         _usage = usage;
+        _enforcement = enforcement;
+        _enforcer = enforcer;
         _time = time;
         _logger = logger;
     }
@@ -133,7 +142,14 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
                 foreach (var (userId, from, to) in _clock.Apply(playbackEvent))
                 {
                     _usage.AddPlayed(userId, from, to);
+                    _enforcement.OnPlayed(userId, from, to);
                 }
+            }
+
+            // Decided in memory; any action runs off the session manager's thread
+            if (kind != PlaybackEventKind.Stop)
+            {
+                _ = _enforcer.OnPlayback(KidSession.From(session), kind == PlaybackEventKind.Progress && e.IsAutomated);
             }
 
             return true;
@@ -165,6 +181,8 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
                 _clock.Sweep(_time.GetUtcNow());
             }
 
+            // Denied kids' sessions still shown as playing without reporting
+            _ = _enforcer.Sweep();
             await FlushSafeAsync().ConfigureAwait(false);
         }
         catch (Exception ex)

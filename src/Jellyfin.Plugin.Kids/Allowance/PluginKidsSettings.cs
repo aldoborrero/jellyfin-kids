@@ -1,4 +1,5 @@
 using System;
+using Jellyfin.Plugin.Kids.Configuration;
 
 namespace Jellyfin.Plugin.Kids.Allowance;
 
@@ -7,29 +8,36 @@ namespace Jellyfin.Plugin.Kids.Allowance;
 /// </summary>
 public sealed class PluginKidsSettings : IKidsSettings
 {
-    private readonly Func<int?> _dayStartsAtHour;
+    private readonly Func<PluginConfiguration?> _configuration;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginKidsSettings"/> class over the running plugin.
     /// </summary>
     public PluginKidsSettings()
-        : this(() => Plugin.Instance?.Configuration.DayStartsAtHour)
+        : this(() => Plugin.Instance?.Configuration)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="PluginKidsSettings"/> class over a given setting, so tests need no
-    /// Jellyfin types.
+    /// Initializes a new instance of the <see cref="PluginKidsSettings"/> class over a given configuration, so tests need
+    /// no running plugin.
     /// </summary>
-    /// <param name="dayStartsAtHour">Reads the stored "day starts at" hour; null when there is no configuration.</param>
-    internal PluginKidsSettings(Func<int?> dayStartsAtHour)
+    /// <param name="configuration">Reads the stored configuration; null when there is none.</param>
+    internal PluginKidsSettings(Func<PluginConfiguration?> configuration)
     {
-        _dayStartsAtHour = dayStartsAtHour;
+        _configuration = configuration;
     }
 
     /// <inheritdoc />
-    public int DayStartsAtHour => _dayStartsAtHour() is int hour and >= 0 and <= 23 ? hour : 0;
+    public int DayStartsAtHour => _configuration()?.DayStartsAtHour is int hour and >= 0 and <= 23 ? hour : 0;
 
     /// <inheritdoc />
     public TimeZoneInfo Zone => TimeZoneInfo.Local;
+
+    /// <inheritdoc />
+    public bool EnforcementEnabled => _configuration()?.EnforcementEnabled ?? false;
+
+    /// <inheritdoc />
+    public TimeSpan SittingBreak => TimeSpan.FromMinutes(
+        _configuration()?.SittingBreakMinutes is int minutes and >= 1 and <= 240 ? minutes : PluginConfiguration.DefaultSittingBreakMinutes);
 }
