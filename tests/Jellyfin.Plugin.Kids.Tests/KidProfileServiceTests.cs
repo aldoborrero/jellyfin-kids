@@ -184,6 +184,33 @@ public sealed class KidProfileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_WithoutTheSessionLimit_ClearsIt()
+    {
+        var saved = await _service.SaveAsync(_alice, 0, new KidProfileInput { SessionLimitMinutes = 30 });
+        Assert.Equal(30, saved.Profile!.Settings.SessionLimitMinutes);
+
+        var result = await _service.SaveAsync(_alice, 1, new KidProfileInput { SearchAllowed = true });
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.Null(result.Profile!.Settings.SessionLimitMinutes);
+        Assert.Null((await _service.GetAsync(_alice))!.Settings.SessionLimitMinutes);
+    }
+
+    [Fact]
+    public async Task Save_SessionLimitOutOfRange_IsInvalidAndKeepsTheProfile()
+    {
+        await _service.SaveAsync(_alice, 0, new KidProfileInput { SessionLimitMinutes = 30 });
+
+        var result = await _service.SaveAsync(_alice, 1, new KidProfileInput { SessionLimitMinutes = 121 });
+
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        Assert.Contains("SessionLimitMinutes", result.Errors!.Keys);
+        var stored = (await _service.GetAsync(_alice))!;
+        Assert.Equal(1, stored.Revision);
+        Assert.Equal(30, stored.Settings.SessionLimitMinutes);
+    }
+
+    [Fact]
     public async Task Get_NotAKid_IsNull()
     {
         Assert.Null(await _service.GetAsync(_alice));

@@ -49,6 +49,13 @@
                         <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes"></div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="kidsSessionLimit">Session limit (minutes)</label>
+                        <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" min="5" max="120" step="1" placeholder="No limit" />
+                        <div class="fieldDescription">The longest one sitting can last on a TV, counted on each TV. Leave empty for no limit.</div>
+                        <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes"></div>
+                    </div>
+
                     <h3>Home sections</h3>
                     <div class="fieldDescription">The order and the sections shown on the kids home screen.</div>
                     <div class="kidsSections paperList"></div>

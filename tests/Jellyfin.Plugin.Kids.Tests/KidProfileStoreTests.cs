@@ -213,4 +213,44 @@ public sealed class KidProfileStoreTests : IDisposable
 
         Assert.Equal(45, (await _store.GetAsync(userId))!.Settings.DailyAllowanceMinutes);
     }
+
+    [Fact]
+    public async Task Get_SettingsStoredWithoutTheSessionLimit_ReadsAsNone()
+    {
+        var userId = Guid.NewGuid();
+        Assert.True(_db.EnsureInitialized());
+        using (var connection = new SqliteConnection($"Data Source={Path.Combine(_folder.Path, KidsDatabase.FileName)};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO kid_profile VALUES ($id, 2, $s, '2026-10-18T00:00:00Z', '2026-10-18T00:00:00Z')";
+            command.Parameters.AddWithValue("$id", userId.ToString("N"));
+            command.Parameters.AddWithValue("$s", """{"AutoplayCap":3,"DailyAllowanceMinutes":45}""");
+            command.ExecuteNonQuery();
+        }
+
+        var profile = await _store.GetAsync(userId);
+
+        Assert.Null(profile!.Settings.SessionLimitMinutes);
+        Assert.Equal(45, profile.Settings.DailyAllowanceMinutes);
+    }
+
+    [Fact]
+    public async Task InsertAndUpdate_KeepTheSessionLimit()
+    {
+        var userId = Guid.NewGuid();
+        await _store.InsertAsync(userId, new KidProfileSettings { SessionLimitMinutes = 30 });
+        Assert.Equal(30, (await _store.GetAsync(userId))!.Settings.SessionLimitMinutes);
+
+        var updated = await _store.UpdateIfRevisionAsync(userId, 1, new KidProfileSettings { SessionLimitMinutes = 120, DailyAllowanceMinutes = 60 });
+
+        Assert.Equal(StoreOutcome.Updated, updated.Outcome);
+        var stored = (await _store.GetAsync(userId))!.Settings;
+        Assert.Equal(120, stored.SessionLimitMinutes);
+        Assert.Equal(60, stored.DailyAllowanceMinutes);
+
+        await _store.UpdateIfRevisionAsync(userId, 2, new KidProfileSettings());
+
+        Assert.Null((await _store.GetAsync(userId))!.Settings.SessionLimitMinutes);
+    }
 }

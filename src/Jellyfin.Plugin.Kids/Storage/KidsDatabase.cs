@@ -27,7 +27,7 @@ public sealed class KidsDatabase : IDisposable
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
     /// </summary>
-    public const long SchemaVersion = 3;
+    public const long SchemaVersion = 4;
 
     // Each step moves the schema from version (index) to version (index + 1)
     private static readonly string[] _migrations =
@@ -60,6 +60,10 @@ public sealed class KidsDatabase : IDisposable
         CREATE TABLE reported_segment (
           user_id TEXT NOT NULL, segment_id TEXT NOT NULL, day TEXT NOT NULL, started_at TEXT NOT NULL,
           seconds INTEGER NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY (user_id, segment_id));
+        """,
+        // Settings live in the JSON, so this step only gives every existing profile the new key, set to null
+        """
+        UPDATE kid_profile SET settings = json_insert(settings, '$.SessionLimitMinutes', NULL);
         """
     ];
 

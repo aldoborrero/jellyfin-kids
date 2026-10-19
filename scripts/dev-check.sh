@@ -536,6 +536,36 @@ for page in Kids KidsUser; do
   fi
 done
 
+# ar. Info lists the session limit capability (feature 4)
+req - GET /Kids/Info
+check "ar Info lists sessionLimit" 200 '(.Features | index("sessionLimit")) != null'
+
+# as. The session limit is validated like the other fields, and a rejected change saves nothing
+rev=$(alice_rev)
+for bad in 4 121; do
+  req "$admin" PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$rev,\"SessionLimitMinutes\":$bad}"
+  check "as a session limit of $bad minutes is rejected" 400 "$errors | has(\"SessionLimitMinutes\")"
+done
+req "$admin" GET "/Kids/Users/$alice_id/Profile"
+check "as alice's profile is unchanged" 200 ".Revision == $rev and (has(\"SessionLimitMinutes\") | not)"
+
+# at. Round trip: admin sets it with the allowance, alice reads it, and alice cannot change it
+req "$admin" PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$rev,\"SessionLimitMinutes\":30,\"DailyAllowanceMinutes\":60}"
+check "at admin sets a 30-minute session limit" 200 \
+  ".Revision == $((rev + 1)) and .SessionLimitMinutes == 30 and .DailyAllowanceMinutes == 60"
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "at alice reads her session limit" 200 '.SessionLimitMinutes == 30 and .DailyAllowanceMinutes == 60'
+req "$alice" PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$((rev + 1)),\"SessionLimitMinutes\":120}"
+check "at alice cannot change her own session limit" 403
+
+# au. A PUT without the field clears it (full replacement), and a missing limit is left out of the JSON. Leaves alice
+# with no session limit and no allowance
+req "$admin" PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$((rev + 1))}"
+check "au a PUT without the field clears it and omits the key" 200 \
+  '(has("SessionLimitMinutes") | not) and (has("DailyAllowanceMinutes") | not)'
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "au alice's profile has no SessionLimitMinutes key" 200 '(has("SessionLimitMinutes") | not)'
+
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
 sleep $((bob_wait + 1))

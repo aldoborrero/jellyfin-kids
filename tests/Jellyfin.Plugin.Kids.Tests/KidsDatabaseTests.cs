@@ -94,7 +94,7 @@ public sealed class KidsDatabaseTests : IDisposable
         Assert.Equal(KidsDatabase.SchemaVersion, ReadScalar<long>(path, "PRAGMA user_version"));
         Assert.Equal(2L, ReadScalar<long>(path, "SELECT count(*) FROM kid_profile"));
         Assert.Equal(3L, ReadScalar<long>(path, "SELECT revision FROM kid_profile WHERE user_id = 'a'"));
-        Assert.Equal("{\"SearchAllowed\":true}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
+        Assert.Equal("{\"SearchAllowed\":true,\"SessionLimitMinutes\":null}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
         Assert.Equal(0L, ReadScalar<long>(path, "SELECT count(*) FROM parent_lock"));
     }
 
@@ -125,11 +125,71 @@ public sealed class KidsDatabaseTests : IDisposable
         var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
 
         Assert.True(db.EnsureInitialized());
-        Assert.Equal(3L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(KidsDatabase.SchemaVersion, ReadScalar<long>(path, "PRAGMA user_version"));
         Assert.Equal(3L, ReadScalar<long>(path, "SELECT revision FROM kid_profile WHERE user_id = 'a'"));
-        Assert.Equal("{\"SearchAllowed\":true}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
+        Assert.Equal("{\"SearchAllowed\":true,\"SessionLimitMinutes\":null}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
         Assert.Equal("v", ReadScalar<string>(path, "SELECT verifier FROM parent_lock"));
         Assert.Equal(3L, ReadScalar<long>(path, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('usage_day', 'bonus', 'reported_segment')"));
+    }
+
+    [Fact]
+    public async Task EnsureInitialized_FromVersion3_AddsNullSessionLimitAndKeepsEverythingElse()
+    {
+        Directory.CreateDirectory(_folder.Path);
+        var path = Path.Combine(_folder.Path, KidsDatabase.FileName);
+        Execute(path, """
+            CREATE TABLE kid_profile (
+              user_id    TEXT    PRIMARY KEY,
+              revision   INTEGER NOT NULL CHECK (revision >= 1),
+              settings   TEXT    NOT NULL,
+              created_at TEXT    NOT NULL,
+              updated_at TEXT    NOT NULL
+            );
+            CREATE TABLE parent_lock (
+              id         INTEGER PRIMARY KEY CHECK (id = 1),
+              lock_type  TEXT    NOT NULL CHECK (lock_type IN ('NUMERIC','REMOTE')),
+              verifier   TEXT    NOT NULL,
+              changed_at TEXT    NOT NULL
+            );
+            CREATE TABLE usage_day (
+              user_id TEXT NOT NULL, day TEXT NOT NULL, used_ms INTEGER NOT NULL CHECK (used_ms >= 0),
+              PRIMARY KEY (user_id, day));
+            CREATE TABLE bonus (
+              id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, day TEXT NOT NULL,
+              minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 240), granted_by TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE reported_segment (
+              user_id TEXT NOT NULL, segment_id TEXT NOT NULL, day TEXT NOT NULL, started_at TEXT NOT NULL,
+              seconds INTEGER NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY (user_id, segment_id));
+            INSERT INTO kid_profile VALUES
+              ('0123456789abcdef0123456789abcdef', 4,
+               '{"SearchAllowed":true,"AutoplayEnabled":true,"AutoplayCap":7,"PickedItemIds":[],"DailyAllowanceMinutes":45}', 'x', 'x'),
+              ('b', 1, '{}', 'x', 'x'),
+              ('c', 2, '{"SessionLimitMinutes":30}', 'x', 'x');
+            INSERT INTO parent_lock VALUES (1, 'NUMERIC', 'v', 'x');
+            INSERT INTO usage_day VALUES ('b', '2026-10-18', 1234);
+            INSERT INTO bonus VALUES (1, 'b', '2026-10-18', 5, 'admin', 'x');
+            PRAGMA user_version = 3;
+            """);
+
+        var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
+
+        Assert.True(db.EnsureInitialized());
+        Assert.Equal(4L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal("{\"SessionLimitMinutes\":null}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
+        Assert.Equal("{\"SessionLimitMinutes\":30}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'c'"));
+        Assert.Equal("v", ReadScalar<string>(path, "SELECT verifier FROM parent_lock"));
+        Assert.Equal(1234L, ReadScalar<long>(path, "SELECT used_ms FROM usage_day"));
+        Assert.Equal(5L, ReadScalar<long>(path, "SELECT minutes FROM bonus"));
+
+        // The store reads the migrated row with its settings intact and no session limit
+        var profile = await new KidProfileStore(db).GetAsync(Guid.ParseExact("0123456789abcdef0123456789abcdef", "N"));
+        Assert.NotNull(profile);
+        Assert.Equal(4L, profile.Revision);
+        Assert.True(profile.Settings.SearchAllowed);
+        Assert.True(profile.Settings.AutoplayEnabled);
+        Assert.Equal(7, profile.Settings.AutoplayCap);
+        Assert.Equal(45, profile.Settings.DailyAllowanceMinutes);
+        Assert.Null(profile.Settings.SessionLimitMinutes);
     }
 
     [Fact]

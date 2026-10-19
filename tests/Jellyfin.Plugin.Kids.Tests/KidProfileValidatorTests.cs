@@ -69,6 +69,49 @@ public class KidProfileValidatorTests
         Assert.Equal(["Must be between 0 and 1440."], result.Errors["DailyAllowanceMinutes"]);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(5)]
+    [InlineData(30)]
+    [InlineData(120)]
+    public void SessionLimit_InRangeOrNone_IsKept(int? minutes)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { SessionLimitMinutes = minutes }, [], _catalog);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(minutes, result.Settings!.SessionLimitMinutes);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(4)]
+    [InlineData(121)]
+    public void SessionLimit_OutOfRange_IsRejected(int minutes)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { SessionLimitMinutes = minutes }, [], _catalog);
+
+        Assert.False(result.IsValid);
+        Assert.Null(result.Settings);
+        Assert.Equal(["Must be between 5 and 120."], result.Errors["SessionLimitMinutes"]);
+    }
+
+    [Fact]
+    public void SessionLimit_IsReportedWithOtherFieldErrors()
+    {
+        var input = new KidProfileInput { AutoplayCap = 11, DailyAllowanceMinutes = 1441, SessionLimitMinutes = 200 };
+
+        var result = KidProfileValidator.Validate(input, [], _catalog);
+
+        Assert.Equal(["AutoplayCap", "DailyAllowanceMinutes", "SessionLimitMinutes"], result.Errors.Keys.Order());
+    }
+
+    [Fact]
+    public void EmptyInput_HasNoSessionLimit()
+    {
+        Assert.Null(KidProfileValidator.Validate(new KidProfileInput(), [], _catalog).Settings!.SessionLimitMinutes);
+    }
+
     [Fact]
     public void Sections_AreParsedCaseInsensitivelyAndNormalized()
     {
