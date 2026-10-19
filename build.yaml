@@ -1,7 +1,7 @@
 ---
 name: "Kids"
 guid: "d62ee188-270c-49d8-b7b9-5e524fec2335"
-version: "0.0.4.0"
+version: "0.0.4.1"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Parent-controlled kids profiles"
@@ -13,5 +13,6 @@ owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"
 changelog: >
-  Session limit: an optional per-kid sitting limit (5–120 minutes) in the kid profile and the dashboard editor,
-  stored by the server and counted by each TV.
+  Dashboard pages redesigned to look and behave like native Jellyfin 12.2 pages: a max-width layout, the users list
+  first with avatars, full names, today's screen time and a visible Edit settings button, then the parent lock and
+  screen time; the kid editor grouped into sections, with bonus minutes moved into it.

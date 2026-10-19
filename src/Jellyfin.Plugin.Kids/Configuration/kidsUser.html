@@ -7,77 +7,134 @@
 <body>
     <!-- Served without authentication: static markup only, everything is loaded by kidsUser.js -->
     <div id="KidsUserPage" data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsUserJs">
+        <!-- Layout only: colours come from Jellyfin's theme variables and classes, so every theme works -->
+        <style>
+            #KidsUserPage .kidsBack { margin: 0 0 0 -0.5em; padding: 0.5em; }
+            #KidsUserPage .kidsBack .material-icons { margin-right: 0.35em; }
+            #KidsUserPage .kidsError, #KidsUserPage .kidsFormError, #KidsUserPage .kidsBonusError { color: var(--jf-palette-error-main); }
+            #KidsUserPage .kidsConflict { padding: 0.5em 1em 1em; margin-bottom: 1.5em; border: 1px solid var(--jf-palette-warning-main); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsUserPage .kidsConflict[hidden] { display: none; }
+            #KidsUserPage .kidsUsageLine { margin: 0 0 1.5em; }
+            #KidsUserPage .kidsBonusRow { display: flex; align-items: flex-end; gap: 0.75em; }
+            #KidsUserPage .kidsBonusRow .inputContainer { flex-grow: 1; margin-bottom: 0; }
+            #KidsUserPage .kidsBonusRow .emby-button { margin: 0; flex-shrink: 0; padding-top: 0.55em; padding-bottom: 0.55em; }
+            #KidsUserPage .kidsBonusBlock { margin-bottom: 1.8em; }
+            #KidsUserPage .kidsBonusBlock .fieldDescription { margin-top: 0.5em; }
+            #KidsUserPage .kidsRow { cursor: default; }
+            #KidsUserPage .kidsRow .listItemBody { min-width: 0; }
+            #KidsUserPage .kidsRow > label { flex-grow: 1; width: auto; margin-left: 0.5em; }
+            #KidsUserPage .kidsEmpty { padding: 1em; margin: 0; }
+            #KidsUserPage .kidsAddPick { margin-top: 1.5em; }
+        </style>
         <div data-role="content">
             <div class="content-primary">
-                <p><a class="button-link" href="#/configurationpage?name=Kids">&larr; Kids</a></p>
-                <h2 class="kidsUserTitle">Kid settings</h2>
+                <div class="readOnlyContent">
+                    <div class="verticalSection">
+                        <a is="emby-linkbutton" class="emby-button button-flat kidsBack" href="#/configurationpage?name=Kids">
+                            <span class="material-icons arrow_back" aria-hidden="true"></span>
+                            <span>Kids</span>
+                        </a>
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h2 class="sectionTitle kidsUserTitle">Kid settings</h2>
+                        </div>
+                    </div>
 
-                <p class="kidsMessage" hidden></p>
+                    <p class="kidsMessage" hidden></p>
 
-                <div class="kidsConflict" hidden style="padding: 1em; margin-bottom: 1em; border: 1px solid #ff9800;">
-                    <p>These settings were changed somewhere else. Nothing was saved.</p>
-                    <button is="emby-button" type="button" class="raised kidsReload">
-                        <span>Load current settings</span>
-                    </button>
+                    <div class="kidsConflict" hidden>
+                        <p>These settings were changed somewhere else. Nothing was saved.</p>
+                        <button is="emby-button" type="button" class="raised kidsReload">
+                            <span>Load current settings</span>
+                        </button>
+                    </div>
+
+                    <form class="kidsUserForm" hidden>
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Screen time</h3>
+                            </div>
+                            <p class="fieldDescription kidsUsageLine"></p>
+
+                            <div class="inputContainer">
+                                <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" label="Daily allowance (minutes)" min="0" max="1440" step="1" placeholder="No limit" />
+                                <div class="fieldDescription">Screen time a day, counted on every client. Leave empty for no limit.</div>
+                                <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes"></div>
+                            </div>
+
+                            <div class="inputContainer">
+                                <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" label="Session limit (minutes)" min="5" max="120" step="1" placeholder="No limit" />
+                                <div class="fieldDescription">The longest one sitting can last on a TV, counted on each TV. Leave empty for no limit.</div>
+                                <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes"></div>
+                            </div>
+
+                            <div class="kidsBonusBlock">
+                                <div class="kidsBonusRow">
+                                    <div class="inputContainer">
+                                        <input is="emby-input" type="text" id="kidsBonusMinutes" class="kidsBonusMinutes" label="Bonus for today (minutes)" inputmode="numeric" autocomplete="off" />
+                                    </div>
+                                    <button is="emby-button" type="button" class="raised kidsBonusAdd">
+                                        <span>Add</span>
+                                    </button>
+                                </div>
+                                <div class="fieldDescription">Extra minutes on top of today's allowance, added straight away.</div>
+                                <div class="fieldDescription kidsBonusError" hidden></div>
+                            </div>
+                        </div>
+
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Browsing</h3>
+                            </div>
+                            <div class="checkboxContainer">
+                                <label>
+                                    <input is="emby-checkbox" type="checkbox" class="kidsSearchAllowed" />
+                                    <span>Allow search</span>
+                                </label>
+                            </div>
+
+                            <div class="checkboxContainer">
+                                <label>
+                                    <input is="emby-checkbox" type="checkbox" class="kidsAutoplayEnabled" />
+                                    <span>Play the next episode automatically</span>
+                                </label>
+                            </div>
+
+                            <div class="inputContainer">
+                                <input is="emby-input" type="number" id="kidsAutoplayCap" class="kidsAutoplayCap" label="Episodes in a row (1–10)" min="1" max="10" step="1" />
+                                <div class="fieldDescription kidsError" data-error-for="AutoplayCap"></div>
+                            </div>
+                        </div>
+
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Home sections</h3>
+                            </div>
+                            <p class="fieldDescription">The order and the sections shown on the kids home screen.</p>
+                            <div class="kidsSections paperList"></div>
+                            <div class="fieldDescription kidsError" data-error-for="Sections"></div>
+                        </div>
+
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Picked by your grown-ups</h3>
+                            </div>
+                            <p class="fieldDescription">Collections and playlists shown in the "Picked" section, in order.</p>
+                            <div class="kidsPicks paperList"></div>
+                            <div class="fieldDescription kidsError" data-error-for="PickedItemIds"></div>
+
+                            <div class="inputContainer kidsAddPick">
+                                <input is="emby-input" type="search" id="kidsPickSearch" class="kidsPickSearch" label="Add a collection or playlist" autocomplete="off" />
+                            </div>
+                            <div class="kidsPickResults paperList"></div>
+                        </div>
+
+                        <p class="kidsFormError" hidden></p>
+
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Save</span>
+                        </button>
+                    </form>
                 </div>
-
-                <form class="kidsUserForm" hidden>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" class="kidsSearchAllowed" />
-                            <span>Allow search</span>
-                        </label>
-                    </div>
-
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" class="kidsAutoplayEnabled" />
-                            <span>Play the next episode automatically</span>
-                        </label>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel" for="kidsAutoplayCap">Episodes in a row (1–10)</label>
-                        <input is="emby-input" type="number" id="kidsAutoplayCap" class="kidsAutoplayCap" min="1" max="10" step="1" />
-                        <div class="fieldDescription kidsError" data-error-for="AutoplayCap"></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel" for="kidsDailyAllowance">Daily allowance (minutes)</label>
-                        <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" min="0" max="1440" step="1" placeholder="No limit" />
-                        <div class="fieldDescription">Screen time a day, counted on every client. Leave empty for no limit.</div>
-                        <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes"></div>
-                    </div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel" for="kidsSessionLimit">Session limit (minutes)</label>
-                        <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" min="5" max="120" step="1" placeholder="No limit" />
-                        <div class="fieldDescription">The longest one sitting can last on a TV, counted on each TV. Leave empty for no limit.</div>
-                        <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes"></div>
-                    </div>
-
-                    <h3>Home sections</h3>
-                    <div class="fieldDescription">The order and the sections shown on the kids home screen.</div>
-                    <div class="kidsSections paperList"></div>
-                    <div class="fieldDescription kidsError" data-error-for="Sections"></div>
-
-                    <h3>Picked by your grown-ups</h3>
-                    <div class="fieldDescription">Collections and playlists shown in the "Picked" section, in order.</div>
-                    <div class="kidsPicks paperList"></div>
-                    <div class="fieldDescription kidsError" data-error-for="PickedItemIds"></div>
-
-                    <div class="inputContainer">
-                        <label class="inputLabel" for="kidsPickSearch">Add a collection or playlist</label>
-                        <input is="emby-input" type="search" id="kidsPickSearch" class="kidsPickSearch" autocomplete="off" />
-                    </div>
-                    <div class="kidsPickResults paperList"></div>
-
-                    <p class="kidsFormError" hidden style="color: #ff6b6b;"></p>
-
-                    <button is="emby-button" type="submit" class="raised button-submit block">
-                        <span>Save</span>
-                    </button>
-                </form>
             </div>
         </div>
     </div>
