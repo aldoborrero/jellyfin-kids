@@ -15,3 +15,6 @@ obj/
 .reference/
 
 .envrc.local
+
+# Release packaging output (scripts/release/package.sh)
+artifacts/

@@ -8,7 +8,7 @@ overview: "Parent-controlled kids profiles"
 description: >
   Server side of kids mode for Jellyfin clients such as Wholphin: kid profiles,
   a household parent lock and screen time shared across devices.
-category: "General"
+category: "Administration"
 owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"

@@ -17,6 +17,7 @@ perSystem.devshell.mkShell {
     # Provisioning and poking at the API
     curl
     jq
+    yq-go
   ];
 
   env = [
