@@ -9,8 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Kids.Hosted;
 
 /// <summary>
-/// At startup, creates or migrates the kids database and removes the profiles of users deleted while the plugin was
-/// not running (the user-deleted event only reaches a running plugin).
+/// At startup, creates or migrates the kids database and removes the profiles and screen time of users deleted while
+/// the plugin was not running (the user-deleted event only reaches a running plugin).
 /// </summary>
 /// <remarks>
 /// Hosted services start after the plugin instances exist and the server's migrations ran, so users can be read here.
@@ -19,6 +19,7 @@ public sealed class OrphanProfileSweeper : IHostedService
 {
     private readonly KidsDatabase _database;
     private readonly KidProfileStore _store;
+    private readonly UsageStore _usage;
     private readonly IKidsUserDirectory _users;
     private readonly ILogger<OrphanProfileSweeper> _logger;
 
@@ -27,12 +28,14 @@ public sealed class OrphanProfileSweeper : IHostedService
     /// </summary>
     /// <param name="database">The plugin database.</param>
     /// <param name="store">The profile store.</param>
+    /// <param name="usage">The usage store.</param>
     /// <param name="users">The Jellyfin users.</param>
     /// <param name="logger">The logger.</param>
-    public OrphanProfileSweeper(KidsDatabase database, KidProfileStore store, IKidsUserDirectory users, ILogger<OrphanProfileSweeper> logger)
+    public OrphanProfileSweeper(KidsDatabase database, KidProfileStore store, UsageStore usage, IKidsUserDirectory users, ILogger<OrphanProfileSweeper> logger)
     {
         _database = database;
         _store = store;
+        _usage = usage;
         _users = users;
         _logger = logger;
     }
@@ -54,13 +57,17 @@ public sealed class OrphanProfileSweeper : IHostedService
 
         var kids = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
         var orphans = kids.Select(k => k.UserId).Where(id => !users.Contains(id)).ToList();
-        if (orphans.Count == 0)
+        if (orphans.Count > 0)
         {
-            return;
+            var removed = await _store.DeleteManyAsync(orphans, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Removed {Count} orphaned kid profile(s)", removed);
         }
 
-        var removed = await _store.DeleteManyAsync(orphans, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("Removed {Count} orphaned kid profile(s)", removed);
+        var rows = await _usage.DeleteUsersNotInAsync(users, cancellationToken).ConfigureAwait(false);
+        if (rows > 0)
+        {
+            _logger.LogInformation("Removed {Count} screen-time row(s) of deleted users", rows);
+        }
     }
 
     /// <inheritdoc />

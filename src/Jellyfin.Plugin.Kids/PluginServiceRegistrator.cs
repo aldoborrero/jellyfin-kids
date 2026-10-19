@@ -1,5 +1,6 @@
 using System;
 using Jellyfin.Data.Events.Users;
+using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Events;
 using Jellyfin.Plugin.Kids.Hosted;
@@ -29,6 +30,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<KidsDatabase>();
         serviceCollection.AddSingleton<KidProfileStore>();
+        serviceCollection.AddSingleton<KidRoster>();
+        serviceCollection.AddSingleton<IKidsSettings, PluginKidsSettings>();
+        serviceCollection.AddSingleton<UsageStore>();
+        serviceCollection.AddSingleton<UsageService>();
         serviceCollection.AddSingleton<IKidsUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IPickCatalog, JellyfinPickCatalog>();
         serviceCollection.AddSingleton<KidProfileService>();
@@ -40,5 +45,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddScoped<CallerResolver>();
         serviceCollection.AddScoped<IEventConsumer<UserDeletedEventArgs>, UserDeletedConsumer>();
         serviceCollection.AddHostedService<OrphanProfileSweeper>();
+        serviceCollection.AddHostedService<PlaybackTracker>();
     }
 }

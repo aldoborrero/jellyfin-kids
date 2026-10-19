@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Storage;
 
 namespace Jellyfin.Plugin.Kids.Profiles;
@@ -14,6 +16,7 @@ public sealed class KidProfileService
     private readonly KidProfileStore _store;
     private readonly IKidsUserDirectory _users;
     private readonly IPickCatalog _catalog;
+    private readonly KidRoster _roster;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidProfileService"/> class.
@@ -21,11 +24,13 @@ public sealed class KidProfileService
     /// <param name="store">The profile store.</param>
     /// <param name="users">The Jellyfin users.</param>
     /// <param name="catalog">The server's collections and playlists.</param>
-    public KidProfileService(KidProfileStore store, IKidsUserDirectory users, IPickCatalog catalog)
+    /// <param name="roster">The in-memory kid ids, kept in step with marks and unmarks.</param>
+    public KidProfileService(KidProfileStore store, IKidsUserDirectory users, IPickCatalog catalog, KidRoster roster)
     {
         _store = store;
         _users = users;
         _catalog = catalog;
+        _roster = roster;
     }
 
     /// <summary>
@@ -92,6 +97,11 @@ public sealed class KidProfileService
         var stored = baseRevision == 0
             ? await _store.InsertAsync(userId, validation.Settings!, cancellationToken).ConfigureAwait(false)
             : await _store.UpdateIfRevisionAsync(userId, baseRevision, validation.Settings!, cancellationToken).ConfigureAwait(false);
+        if (stored.Outcome == StoreOutcome.Created)
+        {
+            _roster.Add(userId);
+        }
+
         return stored.Outcome switch
         {
             StoreOutcome.Created or StoreOutcome.Updated => new SaveResult(SaveOutcome.Saved, stored.Profile),
@@ -106,6 +116,21 @@ public sealed class KidProfileService
     /// <param name="userId">The Jellyfin user id.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns><c>true</c> if the user was a kid.</returns>
-    public Task<bool> DeleteAsync(Guid userId, CancellationToken cancellationToken = default)
-        => _store.DeleteAsync(userId, cancellationToken);
+    public async Task<bool> DeleteAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var deleted = await _store.DeleteAsync(userId, cancellationToken).ConfigureAwait(false);
+        _roster.Remove(userId);
+        return deleted;
+    }
+
+    /// <summary>
+    /// Fills the kid roster from the store.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that completes when the roster is loaded.</returns>
+    public async Task LoadRosterAsync(CancellationToken cancellationToken = default)
+    {
+        var kids = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
+        _roster.Replace(kids.Select(k => k.UserId));
+    }
 }

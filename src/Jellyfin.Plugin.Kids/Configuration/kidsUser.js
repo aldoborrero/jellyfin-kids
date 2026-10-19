@@ -1,5 +1,5 @@
-// The kid settings editor: search, autoplay and its limit, home sections (order and visibility) and the picked
-// collections and playlists. Saves with the loaded revision; a conflict never overwrites.
+// The kid settings editor: search, autoplay and its limit, the daily screen-time allowance, home sections (order and
+// visibility) and the picked collections and playlists. Saves with the loaded revision; a conflict never overwrites.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -61,6 +61,7 @@ export default function (view, params) {
     const form = view.querySelector('.kidsUserForm');
     const capInput = view.querySelector('.kidsAutoplayCap');
     const autoplayInput = view.querySelector('.kidsAutoplayEnabled');
+    const allowanceInput = view.querySelector('.kidsDailyAllowance');
     const searchInput = view.querySelector('.kidsPickSearch');
     const results = view.querySelector('.kidsPickResults');
 
@@ -116,6 +117,26 @@ export default function (view, params) {
     function capIsValid() {
         const value = Number(capInput.value);
         return Number.isInteger(value) && value >= 1 && value <= 10;
+    }
+
+    const allowanceProblem = 'Between 0 and 1440 minutes, or empty for no limit.';
+
+    // Empty means no limit (null); otherwise a whole number of minutes 0–1440, or undefined when invalid
+    function allowanceValue() {
+        const text = allowanceInput.value.trim();
+        if (text === '') {
+            return null;
+        }
+
+        const value = Number(text);
+        return Number.isInteger(value) && value >= 0 && value <= 1440 ? value : undefined;
+    }
+
+    function renderAllowance() {
+        // A number input reports bad input (such as "abc") as an empty value with validity.badInput
+        const invalid = allowanceInput.validity.badInput || allowanceValue() === undefined;
+        view.querySelector('.kidsError[data-error-for="DailyAllowanceMinutes"]').textContent = invalid ? allowanceProblem : '';
+        return !invalid;
     }
 
     function renderCap() {
@@ -212,6 +233,7 @@ export default function (view, params) {
         view.querySelector('.kidsSearchAllowed').checked = profile.SearchAllowed;
         autoplayInput.checked = profile.AutoplayEnabled;
         capInput.value = profile.AutoplayCap;
+        allowanceInput.value = profile.DailyAllowanceMinutes === undefined || profile.DailyAllowanceMinutes === null ? '' : String(profile.DailyAllowanceMinutes);
         sections = profile.Sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible }));
         picks = profile.PickedItemIds.map((id) => ({ Id: id, Name: '', Type: null, missing: true }));
         clearErrors();
@@ -263,13 +285,19 @@ export default function (view, params) {
             return false;
         }
 
+        if (!renderAllowance()) {
+            return false;
+        }
+
         const body = {
             Revision: revision,
             SearchAllowed: view.querySelector('.kidsSearchAllowed').checked,
             AutoplayEnabled: autoplayInput.checked,
             AutoplayCap: Number(capInput.value),
             Sections: sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible })),
-            PickedItemIds: picks.map((pick) => pick.Id)
+            PickedItemIds: picks.map((pick) => pick.Id),
+            // Always sent: the update is a full replacement, and omitting it would clear the allowance
+            DailyAllowanceMinutes: allowanceValue()
         };
 
         Dashboard.showLoadingMsg();
@@ -307,6 +335,7 @@ export default function (view, params) {
     form.addEventListener('submit', save);
     autoplayInput.addEventListener('change', renderCap);
     capInput.addEventListener('input', renderCap);
+    allowanceInput.addEventListener('input', renderAllowance);
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(search, 300);

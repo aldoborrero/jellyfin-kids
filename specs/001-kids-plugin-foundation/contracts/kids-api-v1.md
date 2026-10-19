@@ -73,6 +73,9 @@ Authenticated endpoints use Jellyfin's `IgnoreParentalControl` policy, so they w
 }
 ```
 
+Feature 3 adds `DailyAllowanceMinutes` to `KidProfile` and to the update body; see
+[kids-api-v1-allowance.md](../../003-kids-allowance-tracking/contracts/kids-api-v1-allowance.md#kid-profile-changed).
+
 - **404**: the user is not a kid, or does not exist. A kid reading their own profile after being unmarked also
   gets 404.
 
@@ -125,6 +128,8 @@ Marks a user as a kid (create) or replaces a kid's settings (update).
 ## DELETE /Kids/Users/{userId}/Profile
 
 Unmarks a kid and deletes their settings.
+Feature 3 adds `?purge=true`, which also deletes the kid's screen time; see
+[kids-api-v1-allowance.md](../../003-kids-allowance-tracking/contracts/kids-api-v1-allowance.md#delete-kidsusersuseridprofile-changed).
 
 - **Auth**: admin.
 - **Responses**:

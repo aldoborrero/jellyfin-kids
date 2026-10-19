@@ -20,6 +20,12 @@ public sealed record KidProfileSettings
     /// <summary>The most picked items a kid can have.</summary>
     public const int MaxPicks = 50;
 
+    /// <summary>The lowest daily allowance, in minutes.</summary>
+    public const int MinDailyAllowance = 0;
+
+    /// <summary>The highest daily allowance, in minutes (a whole day).</summary>
+    public const int MaxDailyAllowance = 1440;
+
     /// <summary>
     /// Gets a value indicating whether the kid may search.
     /// </summary>
@@ -44,4 +50,9 @@ public sealed record KidProfileSettings
     /// Gets the collections and playlists picked by the grown-ups, in order.
     /// </summary>
     public IReadOnlyList<Guid> PickedItemIds { get; init; } = [];
+
+    /// <summary>
+    /// Gets the daily screen-time allowance in minutes, 0–1440 inclusive; null means unlimited and is the default.
+    /// </summary>
+    public int? DailyAllowanceMinutes { get; init; }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -47,6 +48,21 @@ public sealed class OrphanProfileSweeperTests : IDisposable
     }
 
     [Fact]
+    public async Task StartAsync_RemovesScreenTimeOfDeletedUsers()
+    {
+        var kept = Guid.NewGuid();
+        var deleted = Guid.NewGuid();
+        var usage = new UsageStore(_db);
+        await usage.AddUsageAsync(new Dictionary<(Guid UserId, string Day), long> { [(kept, "2026-10-18")] = 1000, [(deleted, "2026-10-18")] = 1000 });
+        _users.Users.Add(kept);
+
+        await Sweeper(_db, _store).StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1000, await usage.GetUsedMsAsync(kept, "2026-10-18"));
+        Assert.Equal(0, await usage.GetUsedMsAsync(deleted, "2026-10-18"));
+    }
+
+    [Fact]
     public async Task StartAsync_WithNoUsers_RemovesNothing()
     {
         var kid = Guid.NewGuid();
@@ -88,5 +104,5 @@ public sealed class OrphanProfileSweeperTests : IDisposable
     }
 
     private OrphanProfileSweeper Sweeper(KidsDatabase db, KidProfileStore store)
-        => new(db, store, _users, NullLogger<OrphanProfileSweeper>.Instance);
+        => new(db, store, new UsageStore(db), _users, NullLogger<OrphanProfileSweeper>.Instance);
 }

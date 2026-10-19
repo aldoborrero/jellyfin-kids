@@ -27,7 +27,7 @@ public sealed class KidsDatabase : IDisposable
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
     /// </summary>
-    public const long SchemaVersion = 2;
+    public const long SchemaVersion = 3;
 
     // Each step moves the schema from version (index) to version (index + 1)
     private static readonly string[] _migrations =
@@ -48,6 +48,18 @@ public sealed class KidsDatabase : IDisposable
           verifier   TEXT    NOT NULL,
           changed_at TEXT    NOT NULL
         );
+        """,
+        """
+        CREATE TABLE usage_day (
+          user_id TEXT NOT NULL, day TEXT NOT NULL, used_ms INTEGER NOT NULL CHECK (used_ms >= 0),
+          PRIMARY KEY (user_id, day));
+        CREATE TABLE bonus (
+          id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, day TEXT NOT NULL,
+          minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 240), granted_by TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX bonus_user_day ON bonus (user_id, day);
+        CREATE TABLE reported_segment (
+          user_id TEXT NOT NULL, segment_id TEXT NOT NULL, day TEXT NOT NULL, started_at TEXT NOT NULL,
+          seconds INTEGER NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY (user_id, segment_id));
         """
     ];
 

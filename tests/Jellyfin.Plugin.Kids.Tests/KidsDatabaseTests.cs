@@ -91,11 +91,45 @@ public sealed class KidsDatabaseTests : IDisposable
         var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
 
         Assert.True(db.EnsureInitialized());
-        Assert.Equal(2L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(KidsDatabase.SchemaVersion, ReadScalar<long>(path, "PRAGMA user_version"));
         Assert.Equal(2L, ReadScalar<long>(path, "SELECT count(*) FROM kid_profile"));
         Assert.Equal(3L, ReadScalar<long>(path, "SELECT revision FROM kid_profile WHERE user_id = 'a'"));
         Assert.Equal("{\"SearchAllowed\":true}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
         Assert.Equal(0L, ReadScalar<long>(path, "SELECT count(*) FROM parent_lock"));
+    }
+
+    [Fact]
+    public void EnsureInitialized_FromVersion2_AddsUsageTablesAndKeepsProfilesAndLock()
+    {
+        Directory.CreateDirectory(_folder.Path);
+        var path = Path.Combine(_folder.Path, KidsDatabase.FileName);
+        Execute(path, """
+            CREATE TABLE kid_profile (
+              user_id    TEXT    PRIMARY KEY,
+              revision   INTEGER NOT NULL CHECK (revision >= 1),
+              settings   TEXT    NOT NULL,
+              created_at TEXT    NOT NULL,
+              updated_at TEXT    NOT NULL
+            );
+            CREATE TABLE parent_lock (
+              id         INTEGER PRIMARY KEY CHECK (id = 1),
+              lock_type  TEXT    NOT NULL CHECK (lock_type IN ('NUMERIC','REMOTE')),
+              verifier   TEXT    NOT NULL,
+              changed_at TEXT    NOT NULL
+            );
+            INSERT INTO kid_profile VALUES ('a', 3, '{}', 'x', 'x'), ('b', 1, '{"SearchAllowed":true}', 'x', 'x');
+            INSERT INTO parent_lock VALUES (1, 'NUMERIC', 'v', 'x');
+            PRAGMA user_version = 2;
+            """);
+
+        var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
+
+        Assert.True(db.EnsureInitialized());
+        Assert.Equal(3L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(3L, ReadScalar<long>(path, "SELECT revision FROM kid_profile WHERE user_id = 'a'"));
+        Assert.Equal("{\"SearchAllowed\":true}", ReadScalar<string>(path, "SELECT settings FROM kid_profile WHERE user_id = 'b'"));
+        Assert.Equal("v", ReadScalar<string>(path, "SELECT verifier FROM parent_lock"));
+        Assert.Equal(3L, ReadScalar<long>(path, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('usage_day', 'bonus', 'reported_segment')"));
     }
 
     [Fact]

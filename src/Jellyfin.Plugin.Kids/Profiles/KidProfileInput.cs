@@ -32,4 +32,9 @@ public sealed record KidProfileInput
     /// Gets the picked collections and playlists in order.
     /// </summary>
     public IReadOnlyList<Guid>? PickedItemIds { get; init; }
+
+    /// <summary>
+    /// Gets the daily allowance in minutes; null means unlimited.
+    /// </summary>
+    public int? DailyAllowanceMinutes { get; init; }
 }

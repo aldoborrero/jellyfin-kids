@@ -245,9 +245,11 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
   - `kid_profile(user_id PK, revision, json)`;
   - `parent_lock(id PK CHECK (id = 1), lock_type, verifier, changed_at)` for the household lock (schema v2, feature 2;
     a single row enforced by the table, instead of a generic `household(key, value)`);
-  - `usage_day(user_id, local_date, used_ms, PK(user_id, local_date))`;
-  - `bonus(id PK, user_id, local_date, minutes, granted_by, created_at)`;
-  - optionally `usage_segment` for idempotent client reports and history.
+  - (schema v3, feature 3) `usage_day(user_id, day, used_ms, PK(user_id, day))`, where `day` is the `yyyy-MM-dd` day
+    under the household's "day starts at" hour and `used_ms` only ever grows;
+  - `bonus(id PK, user_id, day, minutes CHECK 1–240, granted_by, created_at)`;
+  - `reported_segment(user_id, segment_id, day, started_at, seconds, received_at, PK(user_id, segment_id))`, which
+    makes offline reports idempotent.
 
   Keep the XML config for admin defaults only, so that a dashboard save never overwrites profile writes made through
   the API.
@@ -284,7 +286,7 @@ change admin-owned state, or risk lockouts if the plugin breaks).
 
 | Option | R | I | Notes |
 |---|---|---|---|
-| A. Count server playback events (`PlaybackStart`, `PlaybackProgress`, `PlaybackStopped`) per kid user and server-local date | High: counts every client that reports playback, which is all mainstream clients | None | Handle automated ticks as in §2.3. A kid in `AdditionalUsers` counts too, because `Users` is a list |
+| A. Count server playback events (`PlaybackStart`, `PlaybackProgress`, `PlaybackStopped`) per kid user and server-local date | High: counts every client that reports playback, which is all mainstream clients | None | Handle automated ticks as in §2.3. Only the session owner (`Session.UserId`) is counted: a kid in `AdditionalUsers` of someone else's session is not charged, although `Users` lists them (decided 2026-10-18, feature 3 Q3) |
 | B. Client-reported segments (`POST WatchTime/Report`) | Low on its own | None | Keep it as an optional supplement for offline playback. It can only **add** usage |
 | C. Count active sessions instead of playback (screen time while browsing) | Medium | None | "Screen time" in kids mode means watching. Browsing time is not counted in v1 |
 
@@ -339,7 +341,7 @@ just yet").
 **Native `AccessSchedules`, with no plugin enforcement.** The plugin only provides:
 - a friendlier editor in the config page and the Wholphin parent menu, which writes through `UpdatePolicyAsync` after
   a read-modify-write, and requires a grant or admin;
-- a `withinSchedule` flag and `nextAllowedAt` in `Status`, computed with the same rule as
+- (feature 5) a `withinSchedule` flag and `nextAllowedAt` in `Status`, computed with the same rule as
   `UserEntityExtensions.IsParentalScheduleAllowed`.
 
 Caveats:
@@ -388,21 +390,28 @@ Jellyfin.Plugin.Kids (assembly; plugin name "Kids"; guid d62ee188-270c-49d8-b7b9
 ├── PluginServiceRegistrator.cs    DI wiring (below)
 ├── Configuration/                 PluginConfiguration (admin defaults only), configPage.html, configPage.js
 ├── Storage/KidsDatabase.cs        Microsoft.Data.Sqlite, kids.db in DataFolderPath, schema migrations by user_version
+├── Allowance/                     (feature 3) KidRoster, IKidsSettings/PluginKidsSettings, DayClock, PlaybackClock,
+│                                  PlaybackEvent, StatusCalculator, SegmentValidator, UsageService (pending time, flush,
+│                                  status, bonus, reports, purge, prune); UsageStore lives in Storage/
 ├── Services/
 │   ├── KidProfileService          CRUD with revision (optimistic concurrency), validation (picks are BoxSet/Playlist)
 │   ├── ParentLockService          (ParentLock/) verifier storage, PBKDF2 verify, lock type; ThrottleService beside it
 │   ├── GrantService               in-memory grants: 256-bit random, bound to (deviceId, issuing userId), TTL 5 min; throttling
-│   ├── AllowanceService           daily budget, usage, bonus, remaining; day boundary in server local time
+│   ├── AllowanceService           (built as Allowance/UsageService in feature 3)
 │   ├── PolicyHelper               read-modify-write UserPolicy: recommended policy, AccessSchedules editor, strict-lock apply/restore
 │   └── CallerContext              (Auth/) wraps IAuthorizationContext: IsAdmin (role or API key), UserId; CallerResolver adds
 │                                  the token's registered device (IDeviceDirectory) and the X-Kids-Grant check
 ├── Hosted/
-│   ├── PlaybackTracker            IHostedService; subscribes ISessionManager.PlaybackStart/Progress/Stopped; accumulates usage
+│   ├── OrphanProfileSweeper       IHostedService; at startup, drops profiles and usage of users deleted while stopped
+│   ├── PlaybackTracker            IHostedService; subscribes ISessionManager.PlaybackStart/Progress/Stopped; counts the
+│   │                              session owner if a kid (PlaybackClock), flushes UsageService every 30 s
 │   └── EnforcementLoop            IHostedService; 5 s timer: warnings, Stop + DisplayMessage, transcode kill, schedule-close stop
 ├── Enforcement/PlaybackGateFilter IAsyncActionFilter via Configure<MvcOptions>; 403 {"kids":"timeUp"} for gated actions
 ├── Events/UserDeletedConsumer     IEventConsumer<UserDeletedEventArgs>: drop profile/usage rows
-├── Tasks/PruneUsageTask           IScheduledTask: prune usage/bonus older than N days, reconcile strict locks
-└── Api/                       KidsController (route prefix /Kids) and ParentLockController (/Kids/Parent)
+├── Tasks/PruneUsageTask           IScheduledTask (found by assembly scanning, not DI): prune screen time older than 90 days
+│                                  daily at 03:30; strict-lock reconciliation comes later
+└── Api/                       KidsController (route prefix /Kids), ParentLockController (/Kids/Parent) and
+                               AllowanceController (/Kids/Users/{userId}: Status, WatchTime/Bonus, WatchTime/Report)
 ```
 
 Registrator:
@@ -450,18 +459,18 @@ NuGet packages (more detail in §6.4):
 | `GET /Kids/Profiles` | `[Authorize(IgnoreParentalControl)]` | → `[{userId, revision}]`, so the user switcher knows who the kids are. Ids only |
 | `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionDefaultMinutes?, strictLock}`, or 404 if the user is not a kid |
 | `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` (required; **0 marks the user as a kid**, 409 if already a kid) → 200 with the new revision, or **409 with the current DTO**. The revision is checked before validation, so stale and invalid gives 409 |
-| `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid (also deletes usage if `?purge=true`) |
+| `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid; usage is kept unless `?purge=true` (feature 3) |
 | `POST /Kids/Parent/Verify` | `[Authorize(IgnoreParentalControl)]` | `{code}` → `{valid:true, grant, expiresAt}`, or `{valid:false, retryAfterSeconds?}` |
 | `GET /Kids/Parent/Lock` | `[Authorize(IgnoreParentalControl)]`, any signed-in user | → `{lockType:"NUMERIC"\|"REMOTE"\|null, changedAt?}`, so the client draws the right gate. Nothing else about the lock |
 | `PUT /Kids/Parent/Lock` | admin, or grant plus the `current` code | `{lockType, code}` sets a new code. `{lockType, verifier}` imports one during migration, and only when none is set (admin only, as is setting the first lock) |
 | `DELETE /Kids/Parent/Lock` | admin | removes the household lock and drops every grant |
 | `GET /Kids/Parent/Verifier` | admin or grant | → `{lockType, verifier}`, cached by the device for offline unlock |
-| `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, withinSchedule, nextAllowedAt?, serverTime, warnAtSeconds:[300,60]}`. The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
+| `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, serverTime, nextDayStartsAt, warnAtSeconds:[300,60]}` (feature 3; `withinSchedule` and `nextAllowedAt?` are added by feature 5). The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
 | `POST /Kids/Users/{userId}/WatchTime/Report` | self | `{segments:[{id, startedAt, seconds}]}`, add-only and idempotent by `id`, for offline playback |
 | `POST /Kids/Users/{userId}/WatchTime/Bonus` | admin or grant | `{minutes}` (1–240) → the new Status |
 | `PUT /Kids/Users/{userId}/Schedule` | admin or grant | `{schedules:[{dayOfWeek, startHour, endHour}]}`, written into `UserPolicy.AccessSchedules` |
 | `POST /Kids/Users/{userId}/Policy/Recommended` | admin or grant | `{maxParentalRating, enabledFolders[], hide:bool, dryRun:bool}` → a diff, which is applied unless `dryRun` |
-| `GET /Kids/Admin/Overview` | admin | (feature 3; feature 1 uses Jellyfin's `GET /Users`) for the config page: all users with kid flag, admin flag, policy summary, today's usage, and live sessions |
+| `GET /Kids/Admin/Overview` | admin | **Not needed** (feature 3, research R10): the Kids page uses Jellyfin's `GET /Users`, `GET /Kids/Profiles` and one `GET Status` per kid. Kept here only as a possible later addition |
 | `GET /Kids/Admin/PickCandidates` | admin | `?search=&ids=&limit=` → `[{id, name, type:"BoxSet"\|"Playlist"}]`, every collection and playlist on the server whoever owns them (Jellyfin's `/Items` hides other users' private playlists from admins), for the picks chooser |
 
 Errors use `ProblemDetails`. The gate filter's 403 body is `{"kids":"timeUp","remainingSeconds":0}` or
@@ -638,7 +647,7 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
    across time zones)?
 4. Should the **strict lock** (schedule rewrite) be offered at all, given its lockout risk?
 5. Does an allowance of "0 minutes" on some weekdays need weekday-specific allowances in v1?
-6. Should playback by the kid **as an additional user** in someone else's session count and be stopped?
+6. Should playback by the kid **as an additional user** in someone else's session count and be stopped? Decided 2026-10-18 (feature 3): it does not count; only the session owner is counted.
 7. What should the route prefix be: keep `/Kids` (what the app study uses) or rename to `/Kids` to match the
    plugin name? The proposal is to keep `/Kids`.
 8. Which licence? MIT keeps the option of copying from Trakt, Reports and session-provisioning. GPL-3.0 allows

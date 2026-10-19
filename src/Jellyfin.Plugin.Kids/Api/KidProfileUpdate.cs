@@ -44,6 +44,12 @@ public class KidProfileUpdate
     public IReadOnlyList<Guid>? PickedItemIds { get; init; }
 
     /// <summary>
+    /// Gets the daily screen-time allowance in minutes, 0–1440; null or omitted means unlimited. The update is a full
+    /// replacement, so omitting it clears the allowance: send it on every update.
+    /// </summary>
+    public int? DailyAllowanceMinutes { get; init; }
+
+    /// <summary>
     /// Maps the body to the validator's input.
     /// </summary>
     /// <returns>The input.</returns>
@@ -53,6 +59,7 @@ public class KidProfileUpdate
         AutoplayEnabled = AutoplayEnabled,
         AutoplayCap = AutoplayCap,
         Sections = Sections?.Select(s => new SectionInput(s.Section, s.Visible)).ToList(),
-        PickedItemIds = PickedItemIds
+        PickedItemIds = PickedItemIds,
+        DailyAllowanceMinutes = DailyAllowanceMinutes
     };
 }
