@@ -1,5 +1,5 @@
-// The Kids dashboard page: the household parent lock, and the list of Jellyfin users where kids are marked and
-// unmarked, with a warning for kids who are administrators.
+// The Kids dashboard page: the household parent lock, the "day starts at" setting, and the list of Jellyfin users where
+// kids are marked and unmarked, with today's screen time, bonus minutes and a warning for kids who are administrators.
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none.
 
 const adminWarning = 'Administrators bypass every restriction. Use a non-admin account for this kid.';
@@ -64,6 +64,7 @@ function renderUser(view, user, isKid) {
         const linkLine = element('div', 'listItemBodyText secondary');
         linkLine.append(link);
         body.append(linkLine);
+        body.append(renderUsage(user));
     }
 
     const label = element('label', 'checkboxContainer');
@@ -77,6 +78,145 @@ function renderUser(view, user, isKid) {
 
     item.append(body, label);
     return item;
+}
+
+// Screen time per kid: today's usage from GET Status, and a bonus control that posts WatchTime/Bonus
+
+function minutes(seconds) {
+    return Math.floor(seconds / 60);
+}
+
+function usageText(status) {
+    const used = minutes(status.UsedSeconds);
+    if (status.AllowanceSeconds === undefined || status.AllowanceSeconds === null) {
+        return 'Today: ' + used + ' min (no limit)';
+    }
+
+    const bonus = status.BonusSeconds > 0 ? ' + ' + minutes(status.BonusSeconds) + ' min bonus' : '';
+    const of = 'Today: ' + used + ' of ' + minutes(status.AllowanceSeconds) + ' min' + bonus;
+    return status.TimeUp ? of + ', time is up' : of + ' (' + minutes(status.RemainingSeconds) + ' min left)';
+}
+
+function renderUsage(user) {
+    const line = element('div', 'listItemBodyText secondary kidsUsage');
+    const text = element('span', 'kidsUsageText', 'Today: …');
+    const form = element('form', 'kidsBonusForm');
+    // Our inline message instead of the browser's validation bubble, which would block the submit silently
+    form.noValidate = true;
+    form.style.display = 'inline-flex';
+    form.style.alignItems = 'center';
+    form.style.gap = '0.5em';
+    form.style.marginLeft = '1em';
+    const input = element('input', 'kidsBonusMinutes');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '240';
+    input.step = '1';
+    input.placeholder = '+ minutes';
+    input.style.width = '7em';
+    input.setAttribute('aria-label', 'Bonus minutes for ' + user.Name);
+    const add = element('button', 'raised emby-button kidsBonusAdd', 'Add');
+    add.type = 'submit';
+    const error = element('span', 'kidsBonusError');
+    error.style.color = '#ff6b6b';
+    error.hidden = true;
+    form.append(input, add, error);
+    line.append(text, form);
+
+    const show = (status) => {
+        text.textContent = usageText(status);
+    };
+
+    // Never show 0 when the status could not be read
+    request('GET', 'Kids/Users/' + user.Id + '/Status')
+        .then(show)
+        .catch(() => {
+            text.textContent = 'Usage unavailable';
+        });
+
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        setText(error, null);
+        const value = Number(input.value);
+        if (!Number.isInteger(value) || value < 1 || value > 240) {
+            setText(error, 'Between 1 and 240 minutes.');
+            return;
+        }
+
+        add.disabled = true;
+        request('POST', 'Kids/Users/' + user.Id + '/WatchTime/Bonus', { Minutes: value })
+            .then((status) => {
+                input.value = '';
+                show(status);
+            })
+            .catch((response) => {
+                if (response && response.status === 400 && typeof response.json === 'function') {
+                    return response.json().then((problemDetails) => {
+                        const errors = (problemDetails && problemDetails.errors) || {};
+                        setText(error, errors.Minutes ? errors.Minutes[0] : 'The bonus was refused.');
+                    }, () => setText(error, 'The bonus was refused.'));
+                }
+
+                Dashboard.alert({ title: 'Kids', message: 'Could not add bonus time for ' + user.Name + '.' });
+                return undefined;
+            })
+            .finally(() => {
+                add.disabled = false;
+            });
+    });
+
+    return line;
+}
+
+// "Day starts at", saved in the plugin configuration through Jellyfin's own plugin configuration API
+
+// The plugin id is looked up by name, so this anonymously served file holds no id (check j)
+let pluginIdPromise = null;
+
+function pluginId() {
+    if (!pluginIdPromise) {
+        pluginIdPromise = ApiClient.getJSON(ApiClient.getUrl('Plugins'))
+            .then((plugins) => {
+                const plugin = plugins.find((candidate) => candidate.Name === 'Kids');
+                if (!plugin) {
+                    throw new Error('The Kids plugin is not listed');
+                }
+
+                return plugin.Id;
+            })
+            .catch((error) => {
+                pluginIdPromise = null;
+                throw error;
+            });
+    }
+
+    return pluginIdPromise;
+}
+
+function loadDayStart(view) {
+    return pluginId().then((id) => ApiClient.getPluginConfiguration(id)).then((config) => {
+        const hour = Number(config && config.DayStartsAtHour);
+        view.querySelector('.kidsDayStart').value = String(Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 0);
+    });
+}
+
+function saveDayStart(view) {
+    Dashboard.showLoadingMsg();
+    // Read, change, write, so other settings are kept
+    pluginId()
+        .then((id) => ApiClient.getPluginConfiguration(id).then((config) => {
+            config.DayStartsAtHour = Number(view.querySelector('.kidsDayStart').value);
+            return ApiClient.updatePluginConfiguration(id, config);
+        }))
+        .then((result) => {
+            Dashboard.processPluginConfigurationUpdateResult(result);
+            // Usage lines follow the new day
+            return load(view);
+        })
+        .catch(() => {
+            Dashboard.hideLoadingMsg();
+            Dashboard.alert({ title: 'Kids', message: 'Could not save the screen time setting.' });
+        });
 }
 
 function onToggle(view, user, checkbox) {
@@ -97,7 +237,7 @@ function onToggle(view, user, checkbox) {
         return;
     }
 
-    Dashboard.confirm('Remove the kid settings of ' + user.Name + '? This cannot be undone.', 'Kids', (confirmed) => {
+    Dashboard.confirm('Remove the kid settings of ' + user.Name + '? This cannot be undone. Today\'s screen time is kept.', 'Kids', (confirmed) => {
         if (!confirmed) {
             checkbox.checked = true;
             return;
@@ -260,8 +400,13 @@ export default function (view) {
     });
     view.querySelector('.kidsLockRemove').addEventListener('click', () => removeLock(view));
     view.querySelector('.kidsLockType').addEventListener('change', () => updateRemoteHelp(view));
+    view.querySelector('.kidsDayStartForm').addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveDayStart(view);
+    });
     view.addEventListener('viewshow', () => {
         loadLock(view);
+        loadDayStart(view).catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not load the screen time setting.' }));
         load(view);
     });
 }

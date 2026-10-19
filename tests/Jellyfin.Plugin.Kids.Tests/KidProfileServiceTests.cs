@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
 using Jellyfin.Plugin.Kids.Tests.Fakes;
@@ -14,13 +15,14 @@ public sealed class KidProfileServiceTests : IDisposable
     private readonly KidsDatabase _db;
     private readonly FakeUserDirectory _users = new();
     private readonly FakePickCatalog _catalog = new();
+    private readonly KidRoster _roster = new();
     private readonly KidProfileService _service;
     private readonly Guid _alice = Guid.NewGuid();
 
     public KidProfileServiceTests()
     {
         _db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
-        _service = new KidProfileService(new KidProfileStore(_db), _users, _catalog);
+        _service = new KidProfileService(new KidProfileStore(_db), _users, _catalog, _roster);
         _users.Users.Add(_alice);
     }
 
@@ -132,6 +134,53 @@ public sealed class KidProfileServiceTests : IDisposable
         Assert.True(await _service.DeleteAsync(_alice));
         Assert.False(await _service.DeleteAsync(_alice));
         Assert.Null(await _service.GetAsync(_alice));
+    }
+
+    [Fact]
+    public async Task Mark_AddsToTheRoster_UnmarkRemoves()
+    {
+        await _service.SaveAsync(_alice, 0, new KidProfileInput());
+        Assert.True(_roster.Contains(_alice));
+
+        await _service.DeleteAsync(_alice);
+        Assert.False(_roster.Contains(_alice));
+    }
+
+    [Fact]
+    public async Task FailedMark_DoesNotAddToTheRoster()
+    {
+        await _service.SaveAsync(_alice, 0, new KidProfileInput { AutoplayCap = 11 });
+        await _service.SaveAsync(Guid.NewGuid(), 0, new KidProfileInput());
+
+        Assert.False(_roster.Contains(_alice));
+    }
+
+    [Fact]
+    public async Task LoadRoster_ReadsEveryKid()
+    {
+        var bob = Guid.NewGuid();
+        _users.Users.Add(bob);
+        await _service.SaveAsync(_alice, 0, new KidProfileInput());
+        await _service.SaveAsync(bob, 0, new KidProfileInput());
+        var roster = new KidRoster();
+
+        await new KidProfileService(new KidProfileStore(_db), _users, _catalog, roster).LoadRosterAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(roster.IsLoaded);
+        Assert.True(roster.Contains(_alice));
+        Assert.True(roster.Contains(bob));
+    }
+
+    [Fact]
+    public async Task Save_WithoutTheAllowance_ClearsIt()
+    {
+        await _service.SaveAsync(_alice, 0, new KidProfileInput { DailyAllowanceMinutes = 45 });
+
+        var result = await _service.SaveAsync(_alice, 1, new KidProfileInput { SearchAllowed = true });
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.Null(result.Profile!.Settings.DailyAllowanceMinutes);
+        Assert.Null((await _service.GetAsync(_alice))!.Settings.DailyAllowanceMinutes);
     }
 
     [Fact]

@@ -14,6 +14,7 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// <param name="AutoplayCap">How many episodes autoplay may play in a row.</param>
 /// <param name="Sections">The home sections in order, with their visibility.</param>
 /// <param name="PickedItemIds">The picked collections and playlists in order.</param>
+/// <param name="DailyAllowanceMinutes">The daily screen-time allowance in minutes, 0–1440; absent when unlimited.</param>
 public record KidProfileDto(
     Guid UserId,
     long Revision,
@@ -21,7 +22,8 @@ public record KidProfileDto(
     bool AutoplayEnabled,
     int AutoplayCap,
     IReadOnlyList<HomeSectionEntry> Sections,
-    IReadOnlyList<Guid> PickedItemIds)
+    IReadOnlyList<Guid> PickedItemIds,
+    int? DailyAllowanceMinutes)
 {
     /// <summary>
     /// Maps a stored profile.
@@ -35,5 +37,6 @@ public record KidProfileDto(
         profile.Settings.AutoplayEnabled,
         profile.Settings.AutoplayCap,
         profile.Settings.Sections,
-        profile.Settings.PickedItemIds);
+        profile.Settings.PickedItemIds,
+        profile.Settings.DailyAllowanceMinutes);
 }

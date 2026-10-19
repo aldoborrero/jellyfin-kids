@@ -5,6 +5,7 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Extensions.Json;
+using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Profiles;
 using MediaBrowser.Common.Api;
@@ -31,6 +32,7 @@ public class KidsController : ControllerBase
     private readonly CallerResolver _callers;
     private readonly KidProfileService _profiles;
     private readonly IPickCatalog _pickCatalog;
+    private readonly UsageService _usage;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidsController"/> class.
@@ -38,11 +40,13 @@ public class KidsController : ControllerBase
     /// <param name="callers">Resolves the caller and any parent grant.</param>
     /// <param name="profiles">The kid profile service.</param>
     /// <param name="pickCatalog">The server's collections and playlists.</param>
-    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog)
+    /// <param name="usage">The screen-time service, for purging on unmark.</param>
+    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog, UsageService usage)
     {
         _callers = callers;
         _profiles = profiles;
         _pickCatalog = pickCatalog;
+        _usage = usage;
     }
 
     /// <summary>
@@ -54,7 +58,7 @@ public class KidsController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<KidsInfo> GetInfo()
-        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: ["profiles", "parentLock"]);
+        => new KidsInfo(Plugin.Instance?.Version.ToString() ?? string.Empty, ApiVersion: 1, Features: ["profiles", "parentLock", "allowance"]);
 
     /// <summary>
     /// Lists the kids, so a user switcher can tell who they are.
@@ -138,9 +142,12 @@ public class KidsController : ControllerBase
     }
 
     /// <summary>
-    /// Unmarks a kid and deletes their settings.
+    /// Unmarks a kid and deletes their settings. Their screen time is kept unless <paramref name="purge"/> is set, so
+    /// marking them again keeps today's count.
     /// </summary>
     /// <param name="userId">The kid's user id.</param>
+    /// <param name="purge">Also delete the kid's screen time: usage, bonus minutes and reported segments. Also
+    /// works for a former kid (the answer is then 404), so a failed purge can be retried.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <response code="204">The kid was unmarked.</response>
     /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
@@ -151,7 +158,7 @@ public class KidsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> DeleteProfile([FromRoute] Guid userId, CancellationToken cancellationToken)
+    public async Task<ActionResult> DeleteProfile([FromRoute] Guid userId, [FromQuery] bool purge, CancellationToken cancellationToken)
     {
         var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
         if (!ProfileAccess.CanMutate(caller))
@@ -159,7 +166,15 @@ public class KidsController : ControllerBase
             return Forbid();
         }
 
-        return await _profiles.DeleteAsync(userId, cancellationToken).ConfigureAwait(false) ? NoContent() : NotAKid();
+        var deleted = await _profiles.DeleteAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        // Also for a former kid, so a purge that failed after the unmark can be retried
+        if (purge)
+        {
+            await _usage.PurgeAsync(userId, cancellationToken).ConfigureAwait(false);
+        }
+
+        return deleted ? NoContent() : NotAKid();
     }
 
     /// <summary>

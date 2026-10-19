@@ -46,6 +46,29 @@ public class KidProfileValidatorTests
         Assert.Equal(cap, result.Settings!.AutoplayCap);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(45)]
+    [InlineData(1440)]
+    public void DailyAllowance_InRangeOrUnlimited_IsKept(int? minutes)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { DailyAllowanceMinutes = minutes }, [], _catalog);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(minutes, result.Settings!.DailyAllowanceMinutes);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1441)]
+    public void DailyAllowance_OutOfRange_IsRejected(int minutes)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { DailyAllowanceMinutes = minutes }, [], _catalog);
+
+        Assert.Equal(["Must be between 0 and 1440."], result.Errors["DailyAllowanceMinutes"]);
+    }
+
     [Fact]
     public void Sections_AreParsedCaseInsensitivelyAndNormalized()
     {

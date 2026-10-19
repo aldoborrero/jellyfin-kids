@@ -184,4 +184,33 @@ public sealed class KidProfileStoreTests : IDisposable
 
         Assert.Equal(new KidProfile(userId, 4, new KidProfileSettings { SearchAllowed = true }), profile, ProfileComparer.Instance);
     }
+
+    [Fact]
+    public async Task Get_SettingsStoredBeforeTheAllowance_ReadsAsUnlimited()
+    {
+        var userId = Guid.NewGuid();
+        Assert.True(_db.EnsureInitialized());
+        using (var connection = new SqliteConnection($"Data Source={Path.Combine(_folder.Path, KidsDatabase.FileName)};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO kid_profile VALUES ($id, 2, $s, '2026-10-17T00:00:00Z', '2026-10-17T00:00:00Z')";
+            command.Parameters.AddWithValue("$id", userId.ToString("N"));
+            command.Parameters.AddWithValue("$s", """{"SearchAllowed":false,"AutoplayEnabled":true,"AutoplayCap":3,"PickedItemIds":[]}""");
+            command.ExecuteNonQuery();
+        }
+
+        var profile = await _store.GetAsync(userId);
+
+        Assert.Null(profile!.Settings.DailyAllowanceMinutes);
+    }
+
+    [Fact]
+    public async Task Insert_KeepsTheAllowance()
+    {
+        var userId = Guid.NewGuid();
+        await _store.InsertAsync(userId, new KidProfileSettings { DailyAllowanceMinutes = 45 });
+
+        Assert.Equal(45, (await _store.GetAsync(userId))!.Settings.DailyAllowanceMinutes);
+    }
 }

@@ -11,6 +11,7 @@ perSystem.devshell.mkShell {
 
     # Dev loop: a local Jellyfin 12.x server, rebuilt and restarted on change by process-compose
     jellyfin # wraps --webdir (jellyfin-web) and --ffmpeg (jellyfin-ffmpeg)
+    jellyfin-ffmpeg # on PATH for provisioning, which generates the test clip
     process-compose
 
     # Provisioning and poking at the API

@@ -42,6 +42,13 @@
                         <div class="fieldDescription kidsError" data-error-for="AutoplayCap"></div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="kidsDailyAllowance">Daily allowance (minutes)</label>
+                        <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" min="0" max="1440" step="1" placeholder="No limit" />
+                        <div class="fieldDescription">Screen time a day, counted on every client. Leave empty for no limit.</div>
+                        <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes"></div>
+                    </div>
+
                     <h3>Home sections</h3>
                     <div class="fieldDescription">The order and the sections shown on the kids home screen.</div>
                     <div class="kidsSections paperList"></div>
