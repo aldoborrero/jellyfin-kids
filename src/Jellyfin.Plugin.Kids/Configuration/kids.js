@@ -1,5 +1,6 @@
 // The Kids dashboard page: the list of Jellyfin users where kids are marked and unmarked, with today's screen time and
-// a warning for kids who are administrators; the household parent lock; and the "day starts at" setting.
+// a warning for kids who are administrators; the household parent lock; and the screen time settings: "day starts at",
+// enforcement on every app with its self-check, and the break between sittings.
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none.
 
 const adminWarning = 'Administrators bypass every restriction. Use a non-admin account for this kid.';
@@ -154,7 +155,8 @@ function renderUsage(user, summary, role) {
     return line;
 }
 
-// "Day starts at", saved in the plugin configuration through Jellyfin's own plugin configuration API
+// Screen time settings ("day starts at", enforcement, the sitting break), saved in the plugin configuration through
+// Jellyfin's own plugin configuration API
 
 // The plugin id is looked up by name, so this anonymously served file holds no id (check j)
 let pluginIdPromise = null;
@@ -179,19 +181,47 @@ function pluginId() {
     return pluginIdPromise;
 }
 
-function loadDayStart(view) {
+// The server's ranges (PluginConfiguration, PluginKidsSettings): it reads values outside them as the default
+const defaultSittingBreakMinutes = 15;
+
+function sittingBreakIsValid(text) {
+    const value = Number(text.trim());
+    return text.trim() !== '' && Number.isInteger(value) && value >= 1 && value <= 240;
+}
+
+// Shows or clears the range message under the break field, and says whether the field is valid
+function renderSittingBreak(view) {
+    const input = view.querySelector('.kidsSittingBreak');
+    // A number input reports bad input (such as "abc") as an empty value with validity.badInput
+    const valid = !input.validity.badInput && sittingBreakIsValid(input.value);
+    setText(view.querySelector('.kidsSittingBreakError'), valid ? null : 'Between 1 and 240 minutes.');
+    return valid;
+}
+
+function loadScreenTime(view) {
     return pluginId().then((id) => ApiClient.getPluginConfiguration(id)).then((config) => {
         const hour = Number(config && config.DayStartsAtHour);
         view.querySelector('.kidsDayStart').value = String(Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 0);
+        view.querySelector('.kidsEnforcementEnabled').checked = Boolean(config && config.EnforcementEnabled);
+        // Show what the server applies
+        const breakMinutes = String(config && config.SittingBreakMinutes);
+        view.querySelector('.kidsSittingBreak').value = sittingBreakIsValid(breakMinutes) ? breakMinutes : String(defaultSittingBreakMinutes);
+        renderSittingBreak(view);
     });
 }
 
-function saveDayStart(view) {
+function saveScreenTime(view) {
+    if (!renderSittingBreak(view)) {
+        return;
+    }
+
     Dashboard.showLoadingMsg();
     // Read, change, write, so other settings are kept
     pluginId()
         .then((id) => ApiClient.getPluginConfiguration(id).then((config) => {
             config.DayStartsAtHour = Number(view.querySelector('.kidsDayStart').value);
+            config.EnforcementEnabled = view.querySelector('.kidsEnforcementEnabled').checked;
+            config.SittingBreakMinutes = Number(view.querySelector('.kidsSittingBreak').value.trim());
             return ApiClient.updatePluginConfiguration(id, config);
         }))
         .then((result) => {
@@ -201,7 +231,35 @@ function saveDayStart(view) {
         })
         .catch(() => {
             Dashboard.hideLoadingMsg();
-            Dashboard.alert({ title: 'Kids', message: 'Could not save the screen time setting.' });
+            Dashboard.alert({ title: 'Kids', message: 'Could not save the screen time settings.' });
+        });
+}
+
+// The enforcement self-check from GET Kids/Info: whether this Jellyfin version still has every playback route the
+// plugin guards. It describes the server, not the household, so it is shown with enforcement on or off.
+function loadGate(view) {
+    const line = view.querySelector('.kidsGate');
+    line.classList.remove('kidsProblem');
+    line.textContent = 'Playback routes: checking…';
+    return request('GET', 'Kids/Info')
+        .then((info) => {
+            const gate = info && info.Enforcement;
+            if (!gate) {
+                line.textContent = 'Playback routes: this plugin version does not report them.';
+            } else if (gate.Gate === 'ok') {
+                line.textContent = 'Playback routes: all guarded on this Jellyfin version.';
+            } else if (gate.Gate === 'pending') {
+                line.textContent = 'Playback routes: checking at startup. Reload the page in a moment.';
+            } else {
+                const missing = gate.Missing || [];
+                line.classList.add('kidsProblem');
+                line.textContent = 'Playback routes: ' + missing.length + ' cannot be guarded on this Jellyfin version, '
+                    + 'so kids may still play through them: ' + missing.join(', ') + '. Check for a plugin update.';
+            }
+        })
+        .catch(() => {
+            line.classList.add('kidsProblem');
+            line.textContent = 'Playback routes: could not read the self-check.';
         });
 }
 
@@ -395,13 +453,15 @@ export default function (view) {
     });
     view.querySelector('.kidsLockRemove').addEventListener('click', () => removeLock(view));
     view.querySelector('.kidsLockType').addEventListener('change', () => updateRemoteHelp(view));
-    view.querySelector('.kidsDayStartForm').addEventListener('submit', (event) => {
+    view.querySelector('.kidsScreenTimeForm').addEventListener('submit', (event) => {
         event.preventDefault();
-        saveDayStart(view);
+        saveScreenTime(view);
     });
+    view.querySelector('.kidsSittingBreak').addEventListener('input', () => renderSittingBreak(view));
     view.addEventListener('viewshow', () => {
         load(view);
         loadLock(view);
-        loadDayStart(view).catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not load the screen time setting.' }));
+        loadGate(view);
+        loadScreenTime(view).catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not load the screen time settings.' }));
     });
 }

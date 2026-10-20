@@ -60,8 +60,9 @@ and for installing a release by hand.
 
 ## Enforcement
 
-Enforcement is off after installing or updating. Turn it on per household in the plugin configuration (the
-dashboard control comes with the next dashboard update):
+Enforcement is off after installing or updating. Turn it on per household with **Enforce on every app** under
+Screen time on the Kids dashboard page, which also sets the break between sittings and shows whether every playback
+route could be guarded on your Jellyfin version. Or through the plugin configuration API:
 
 ```sh
 curl -s -H "Authorization: MediaBrowser Token=\"$ADMIN_TOKEN\"" "$JELLYFIN/Plugins/d62ee188270c49d8b7b95e524fec2335/Configuration" \

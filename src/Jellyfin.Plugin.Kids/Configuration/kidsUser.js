@@ -70,7 +70,7 @@ function row(className) {
     return item;
 }
 
-// Today's screen time, from GET Status or the answer to a bonus
+// Today's screen time, the sitting and any refusal, from GET Status or the answer to a bonus
 
 function minutes(seconds) {
     return Math.floor(seconds / 60);
@@ -85,6 +85,39 @@ function usageText(status) {
     const bonus = status.BonusSeconds > 0 ? ' + ' + minutes(status.BonusSeconds) + ' min bonus' : '';
     const of = 'Today: ' + used + ' of ' + minutes(status.AllowanceSeconds) + ' min' + bonus;
     return status.TimeUp ? of + ' · time is up' : of + ' · ' + minutes(status.RemainingSeconds) + ' min left';
+}
+
+// The current sitting, counted by the server across the kid's devices; null when the kid has no sitting limit
+function sittingText(status) {
+    if (status.SittingLimitSeconds === undefined || status.SittingLimitSeconds === null) {
+        return null;
+    }
+
+    const of = 'This sitting: ' + minutes(status.SittingUsedSeconds) + ' of ' + minutes(status.SittingLimitSeconds) + ' min';
+    if (status.BreakRemainingSeconds > 0) {
+        return of + ' · on a break, ' + Math.ceil(status.BreakRemainingSeconds / 60) + ' min to go';
+    }
+
+    return of + ' · ' + minutes(status.SittingRemainingSeconds) + ' min left';
+}
+
+const deniedReasons = {
+    timeUp: 'screen time is over for today',
+    outsideSchedule: 'outside the allowed hours',
+    sessionLimit: 'sitting limit reached'
+};
+
+// Present only while enforcement is on and the kid may not play
+function deniedText(status) {
+    if (!status.DeniedReason) {
+        return null;
+    }
+
+    const reason = deniedReasons[status.DeniedReason] || status.DeniedReason;
+    const until = status.DeniedUntil
+        ? ' until ' + new Date(status.DeniedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '';
+    return 'Playback refused' + until + ': ' + reason + '.';
 }
 
 export default function (view, params) {
@@ -308,13 +341,24 @@ export default function (view, params) {
         bonusError.hidden = !text;
     }
 
+    function setLine(node, text) {
+        node.textContent = text || '';
+        node.hidden = !text;
+    }
+
+    function renderStatus(status) {
+        usageLine.textContent = usageText(status);
+        setLine(view.querySelector('.kidsSittingLine'), sittingText(status));
+        setLine(view.querySelector('.kidsDeniedLine'), deniedText(status));
+    }
+
     function loadUsage() {
         usageLine.textContent = 'Today: …';
+        setLine(view.querySelector('.kidsSittingLine'), null);
+        setLine(view.querySelector('.kidsDeniedLine'), null);
         // Never show 0 when the status could not be read
         request('GET', 'Kids/Users/' + userId + '/Status')
-            .then((status) => {
-                usageLine.textContent = usageText(status);
-            })
+            .then(renderStatus)
             .catch(() => {
                 usageLine.textContent = 'Usage unavailable';
             });
@@ -332,7 +376,7 @@ export default function (view, params) {
         request('POST', 'Kids/Users/' + userId + '/WatchTime/Bonus', { Minutes: value })
             .then((status) => {
                 bonusInput.value = '';
-                usageLine.textContent = usageText(status);
+                renderStatus(status);
             })
             .catch((response) => {
                 if (response && response.status === 400 && typeof response.json === 'function') {
