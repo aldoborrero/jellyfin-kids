@@ -14,7 +14,8 @@
             #KidsUserPage .kidsError, #KidsUserPage .kidsFormError, #KidsUserPage .kidsBonusError { color: var(--jf-palette-error-main); }
             #KidsUserPage .kidsConflict { padding: 0.5em 1em 1em; margin-bottom: 1.5em; border: 1px solid var(--jf-palette-warning-main); border-radius: var(--jf-card-borderRadius, 0.2em); }
             #KidsUserPage .kidsConflict[hidden] { display: none; }
-            #KidsUserPage .kidsUsageLine { margin: 0 0 1.5em; }
+            #KidsUserPage .kidsStatus { margin: 0 0 1.5em; }
+            #KidsUserPage .kidsStatus p { margin: 0 0 0.3em; }
             #KidsUserPage .kidsBonusRow { display: flex; align-items: flex-end; gap: 0.75em; }
             #KidsUserPage .kidsBonusRow .inputContainer { flex-grow: 1; margin-bottom: 0; }
             #KidsUserPage .kidsBonusRow .emby-button { margin: 0; flex-shrink: 0; padding-top: 0.55em; padding-bottom: 0.55em; }
@@ -53,7 +54,11 @@
                             <div class="sectionTitleContainer flex align-items-center">
                                 <h3 class="sectionTitle">Screen time</h3>
                             </div>
-                            <p class="fieldDescription kidsUsageLine"></p>
+                            <div class="kidsStatus">
+                                <p class="fieldDescription kidsUsageLine"></p>
+                                <p class="fieldDescription kidsSittingLine" hidden></p>
+                                <p class="fieldDescription kidsDeniedLine" hidden></p>
+                            </div>
 
                             <div class="inputContainer">
                                 <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" label="Daily allowance (minutes)" min="0" max="1440" step="1" placeholder="No limit" />
@@ -63,7 +68,7 @@
 
                             <div class="inputContainer">
                                 <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" label="Session limit (minutes)" min="5" max="120" step="1" placeholder="No limit" />
-                                <div class="fieldDescription">The longest one sitting can last on a TV, counted on each TV. Leave empty for no limit.</div>
+                                <div class="fieldDescription">The longest one sitting can last, counted across the kid's devices. Leave empty for no limit.</div>
                                 <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes"></div>
                             </div>
 

@@ -25,6 +25,7 @@
             #KidsPage .kidsLockRemoteHelp[hidden] { display: none; }
             #KidsPage .kidsLockRemoteHelp b { font-weight: 600; color: var(--jf-palette-text-primary); margin-right: 0.3em; }
             #KidsPage .kidsLockForm { margin-top: 1.5em; }
+            #KidsPage .kidsSittingBreakError, #KidsPage .kidsGate.kidsProblem { color: var(--jf-palette-error-main); }
             @media all and (max-width: 40em) {
                 #KidsPage .kidsEditLabel { display: none; }
                 #KidsPage .kidsEdit .material-icons { margin-right: 0; }
@@ -109,7 +110,7 @@
                         <div class="sectionTitleContainer flex align-items-center">
                             <h3 class="sectionTitle">Screen time</h3>
                         </div>
-                        <form class="kidsDayStartForm">
+                        <form class="kidsScreenTimeForm">
                             <div class="selectContainer">
                                 <select is="emby-select" id="kidsDayStart" class="kidsDayStart" label="Day starts at">
                                     <option value="0">00:00</option>
@@ -139,7 +140,25 @@
                                 </select>
                                 <div class="fieldDescription">Each kid's screen time starts again from zero at this hour, server time.</div>
                             </div>
-                            <button is="emby-button" type="submit" class="raised button-submit block kidsDayStartSave">
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label>
+                                    <input is="emby-checkbox" type="checkbox" class="kidsEnforcementEnabled" />
+                                    <span>Enforce on every app</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    When a kid's allowance, sitting limit or allowed hours run out, the server warns them,
+                                    stops the player and refuses new playback on every app, not only Wholphin, until a
+                                    bonus, a break or the next day. An app that ignores the stop keeps playing what it has
+                                    already downloaded, and DLNA players and offline downloads are out of reach.
+                                </div>
+                                <div class="fieldDescription checkboxFieldDescription kidsGate"></div>
+                            </div>
+                            <div class="inputContainer">
+                                <input is="emby-input" type="number" id="kidsSittingBreak" class="kidsSittingBreak" label="Break between sittings (minutes)" min="1" max="240" step="1" />
+                                <div class="fieldDescription">How long a kid must have nothing playing for a new sitting to start, and how long they wait after reaching their sitting limit.</div>
+                                <div class="fieldDescription kidsSittingBreakError" hidden></div>
+                            </div>
+                            <button is="emby-button" type="submit" class="raised button-submit block kidsScreenTimeSave">
                                 <span>Save</span>
                             </button>
                         </form>
