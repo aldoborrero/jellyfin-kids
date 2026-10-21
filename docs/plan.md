@@ -388,7 +388,8 @@ and sets:
 - `MaxParentalRating` to a chosen score, from the server's ratings list;
 - `BlockUnratedItems` to all types;
 - `EnableAllFolders = false` with the chosen `EnabledFolders`;
-- `EnableLiveTvAccess = false`, `EnableContentDeletion = false`, `EnableContentDownloading = false`;
+- `EnableLiveTvAccess = false` (unless the kid has live TV channels, feature 6), `EnableContentDeletion = false`,
+  `EnableContentDownloading = false`;
 - `EnableRemoteControlOfOtherUsers = false`, `EnableSharedDeviceControl = false`, `EnablePublicSharing = false`,
   `EnableCollectionManagement = false`, `EnableSubtitleManagement = false`;
 - `EnableUserPreferenceAccess = false`, `SyncPlayAccess = None`, and optionally `IsHidden = true`.
@@ -410,6 +411,24 @@ It then writes the policy back. It shows a diff before applying, and warns when:
 - `CHALLENGE` stores nothing, so the server **cannot** issue a grant from it. In plugin mode with CHALLENGE, the
   device-local gate still works, and server mutations require the parent's admin login (a Wholphin admin profile
   token) instead of a grant. The config page should recommend a code when kids are managed server-side.
+
+### 3.7 Live TV per kid
+
+**Built in feature 6 (spec `006-kids-live-tv`, plugin 0.0.6.0).** `UserPolicy.EnableLiveTvAccess` is all or nothing, so
+each kid profile holds `LiveTvChannelIds` (JSON settings, no migration). An `IAsyncActionFilter`, attached by the
+feature 5 convention to the playback actions and to Jellyfin's `LiveTv` browse and recording actions, holds kids to
+that list **always**, whatever `EnforcementEnabled` says (a content rule, clarified 2026-10-19):
+
+- playback of another channel (by item id, a guide program's channel, the open token `LiveTvChannel_<id>_…`, or a
+  live stream id the plugin recorded when it let a kid open it) answers PlaybackInfo `NotAllowed` or 403 with
+  `X-Kids-Reason: liveTvChannel`; an unknown live TV stream id is refused;
+- recordings, timers and series timers answer 403 `liveTvRecording`;
+- `LiveTv/Channels`, `LiveTv/Programs` (GET, POST) and `Programs/Recommended` are cut to the kid's channels,
+  `Channels/{id}` and `Programs/{id}` of other channels answer 404.
+
+The effective set is empty while the kid's live TV access is off. Kids read their channels and guide from
+`/Kids/Users/{id}/LiveTv/Channels|Programs` (Jellyfin's `BaseItemDto` shape). Jellyfin 12.2 only accepts HTTP entries
+in an M3U tuner, so the dev loop serves two live MPEG-TS channels from jellyfin-ffmpeg (`-listen 1`).
 
 ## 4. Proposed plugin architecture
 
@@ -501,6 +520,8 @@ NuGet packages (more detail in §6.4):
 | `POST /Kids/Users/{userId}/Policy/Recommended` | admin or grant | `{maxParentalRating, enabledFolders[], hide:bool, dryRun:bool}` → a diff, which is applied unless `dryRun` |
 | `GET /Kids/Admin/Overview` | admin | **Not needed** (feature 3, research R10): the Kids page uses Jellyfin's `GET /Users`, `GET /Kids/Profiles` and one `GET Status` per kid. Kept here only as a possible later addition |
 | `GET /Kids/Admin/PickCandidates` | admin | `?search=&ids=&limit=` → `[{id, name, type:"BoxSet"\|"Playlist"}]`, every collection and playlist on the server whoever owns them (Jellyfin's `/Items` hides other users' private playlists from admins), for the picks chooser |
+| `GET /Kids/Users/{userId}/LiveTv/Channels`, `…/LiveTv/Programs` | self or admin, IgnoreParentalControl | (feature 6) the kid's allowed channels with the program on now, and their guide for a window (default 24 h, at most 7 days), in Jellyfin's `QueryResult<BaseItemDto>` shape |
+| `GET /Kids/Admin/LiveTvChannels` | admin | (feature 6) every live TV channel `[{id, name, number, imageTag, type}]`, for the kid editor |
 
 Errors use `ProblemDetails`. The gate filter's 403 body is `{"kids":"timeUp","remainingSeconds":0}` or
 `{"kids":"outsideSchedule"}`.
@@ -665,7 +686,8 @@ Verified against the 12.2 sources. Paths are in `.reference/jellyfin`.
 | 6 | `kids-extras` | Per-kid lock override, activity history, export and import of plugin state (not covered by system backup), optional server-side session cap, optional 10.11 build | Export, wipe and import restore profiles and lock; history lists today's items per kid |
 
 Spec numbers follow the order features are built, not this table: spec `004-kids-session-limit` (2026-10-19) adds the
-per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4) becomes spec 005.
+per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4) becomes spec 005. Spec
+`006-kids-live-tv` (2026-10-20, plugin 0.0.6.0) adds per-kid live TV channels (§3.7), outside this table.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.

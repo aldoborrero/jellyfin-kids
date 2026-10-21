@@ -26,6 +26,12 @@
             #KidsUserPage .kidsRow > label { flex-grow: 1; width: auto; margin-left: 0.5em; }
             #KidsUserPage .kidsEmpty { padding: 1em; margin: 0; }
             #KidsUserPage .kidsAddPick { margin-top: 1.5em; }
+            #KidsUserPage .kidsNotice { padding: 0.75em 1em; margin: 0 0 1em; border: 1px solid var(--jf-palette-warning-main); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsUserPage .kidsNotice[hidden] { display: none; }
+            #KidsUserPage .kidsNotice p { margin: 0.25em 0; }
+            #KidsUserPage .kidsChannelLogo { height: 2em; width: 3.5em; object-fit: contain; margin-right: 0.75em; vertical-align: middle; }
+            #KidsUserPage .kidsChannelIcon { width: 3.5em; margin-right: 0.75em; text-align: center; vertical-align: middle; }
+            #KidsUserPage .kidsChannelNumber { opacity: 0.7; margin-left: 0.5em; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -131,6 +137,25 @@
                                 <input is="emby-input" type="search" id="kidsPickSearch" class="kidsPickSearch" label="Add a collection or playlist" autocomplete="off" />
                             </div>
                             <div class="kidsPickResults paperList"></div>
+                        </div>
+
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Live TV channels</h3>
+                            </div>
+                            <p class="fieldDescription">The channels this kid may watch, and see in the guide, on every device. Other channels, recordings and timers are never available to kids.</p>
+                            <div class="kidsNotice kidsLiveTvNone" role="status" hidden>
+                                <p><strong>No live TV channels allowed.</strong></p>
+                                <p>This kid cannot watch live TV on any device until you tick channels below.</p>
+                            </div>
+                            <div class="kidsNotice kidsLiveTvAccessOff" hidden>
+                                <p>Live TV access is off for this user in Jellyfin, so the channels below will not play. Turn on <em>Allow Live TV access</em> in the user's <a class="button-link kidsUserProfileLink" href="#">profile</a>.</p>
+                            </div>
+                            <div class="kidsNotice kidsLiveTvUnrated" hidden>
+                                <p>This user's content restrictions block unrated live TV channels or programs, so some channels or guide entries may be hidden.</p>
+                            </div>
+                            <div class="kidsChannels paperList"></div>
+                            <div class="fieldDescription kidsError" data-error-for="LiveTvChannelIds"></div>
                         </div>
 
                         <p class="kidsFormError" hidden></p>

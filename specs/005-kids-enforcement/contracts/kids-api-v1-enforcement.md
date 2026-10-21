@@ -99,3 +99,7 @@ values, since it saves the configuration it loaded.
 - jellyfin-web 12.2 shows two alerts for a `NotAllowed` answer (its own "not allowed" one and a generic one), and
   after allowed hours Jellyfin itself answers PlaybackInfo 403 first, which web shows as "Unable to find a valid media
   source to play." (research, Validation).
+
+**Update (feature 6, plugin 0.0.6.0):** the same refusal shapes also carry `X-Kids-Reason: liveTvChannel` (a channel
+outside the kid's list) and `liveTvRecording` (recordings and timers). Those rules are always on, whatever
+`EnforcementEnabled` says; see [feature 6's contract](../../006-kids-live-tv/contracts/kids-api-v1-live-tv.md).

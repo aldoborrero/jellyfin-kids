@@ -5,6 +5,7 @@ using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Events;
 using Jellyfin.Plugin.Kids.Hosted;
+using Jellyfin.Plugin.Kids.LiveTv;
 using Jellyfin.Plugin.Kids.ParentLock;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
@@ -39,6 +40,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<UsageService>();
         serviceCollection.AddSingleton<IKidsUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IPickCatalog, JellyfinPickCatalog>();
+        serviceCollection.AddSingleton<ILiveTvChannelCatalog, JellyfinLiveTvChannelCatalog>();
         serviceCollection.AddSingleton<KidProfileService>();
         serviceCollection.AddSingleton<ParentLockStore>();
         serviceCollection.AddSingleton<IDeviceDirectory, JellyfinDeviceDirectory>();
@@ -62,6 +64,13 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<EnforcementService>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<EnforcementService>());
         serviceCollection.AddSingleton<KidsPlaybackFilter>();
+
+        // Live TV (feature 6): always on, attached by the same convention
+        serviceCollection.AddSingleton<ILiveTvGate>(sp => sp.GetRequiredService<EnforcementState>());
+        serviceCollection.AddSingleton<ILiveTvItems, JellyfinLiveTvItems>();
+        serviceCollection.AddSingleton<LiveStreamRegistry>();
+        serviceCollection.AddSingleton<KidsLiveTvFilter>();
+        serviceCollection.AddSingleton<KidLiveTvService>();
         serviceCollection.Configure<MvcOptions>(options => options.Conventions.Add(new PlaybackGateConvention(coverage)));
     }
 }

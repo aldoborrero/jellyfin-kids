@@ -30,7 +30,8 @@ public sealed class JellyfinPickCatalog : IPickCatalog
 
     /// <inheritdoc />
     public IReadOnlyList<PickCandidate> Resolve(IEnumerable<Guid> ids)
-        => [.. ids.Select(id => ToCandidate(_libraryManager.GetItemById(id))).OfType<PickCandidate>()];
+        // GetItemById throws on an empty id
+        => [.. ids.Where(id => id != Guid.Empty).Select(id => ToCandidate(_libraryManager.GetItemById(id))).OfType<PickCandidate>()];
 
     /// <inheritdoc />
     public IReadOnlyList<PickCandidate> Search(string? term, int limit)

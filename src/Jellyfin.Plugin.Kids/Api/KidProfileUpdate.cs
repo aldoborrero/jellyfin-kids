@@ -57,6 +57,12 @@ public class KidProfileUpdate
     public int? SessionLimitMinutes { get; init; }
 
     /// <summary>
+    /// Gets the live TV channels the kid may watch, in order (at most 200); null, omitted or empty means no live TV.
+    /// Like the limits, omitting it clears it: send it on every update.
+    /// </summary>
+    public IReadOnlyList<Guid>? LiveTvChannelIds { get; init; }
+
+    /// <summary>
     /// Maps the body to the validator's input.
     /// </summary>
     /// <returns>The input.</returns>
@@ -68,6 +74,7 @@ public class KidProfileUpdate
         Sections = Sections?.Select(s => new SectionInput(s.Section, s.Visible)).ToList(),
         PickedItemIds = PickedItemIds,
         DailyAllowanceMinutes = DailyAllowanceMinutes,
-        SessionLimitMinutes = SessionLimitMinutes
+        SessionLimitMinutes = SessionLimitMinutes,
+        LiveTvChannelIds = LiveTvChannelIds
     };
 }

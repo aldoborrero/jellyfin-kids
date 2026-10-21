@@ -20,12 +20,25 @@ public record EnforcementInfo(string Gate, IReadOnlyList<string> Missing)
     {
         System.ArgumentNullException.ThrowIfNull(coverage);
         var state = coverage.State;
-        var gate = state switch
-        {
-            GateCoverage.CheckState.Ok => "ok",
-            GateCoverage.CheckState.Degraded => "degraded",
-            _ => "pending"
-        };
-        return new EnforcementInfo(gate, state == GateCoverage.CheckState.Pending ? [] : coverage.Missing);
+        return new EnforcementInfo(Name(state), state == GateCoverage.CheckState.Pending ? [] : coverage.Missing);
     }
+
+    /// <summary>
+    /// Reads the startup check of the live TV routes (feature 6).
+    /// </summary>
+    /// <param name="coverage">What the convention attached to.</param>
+    /// <returns>The info.</returns>
+    public static EnforcementInfo FromLiveTv(GateCoverage coverage)
+    {
+        System.ArgumentNullException.ThrowIfNull(coverage);
+        var state = coverage.LiveTvState;
+        return new EnforcementInfo(Name(state), state == GateCoverage.CheckState.Pending ? [] : coverage.LiveTvMissing);
+    }
+
+    private static string Name(GateCoverage.CheckState state) => state switch
+    {
+        GateCoverage.CheckState.Ok => "ok",
+        GateCoverage.CheckState.Degraded => "degraded",
+        _ => "pending"
+    };
 }

@@ -42,4 +42,9 @@ public sealed record KidProfileInput
     /// Gets the session limit in minutes; null means no sitting limit.
     /// </summary>
     public int? SessionLimitMinutes { get; init; }
+
+    /// <summary>
+    /// Gets the live TV channels the kid may watch, in order; null or empty means no live TV.
+    /// </summary>
+    public IReadOnlyList<Guid>? LiveTvChannelIds { get; init; }
 }

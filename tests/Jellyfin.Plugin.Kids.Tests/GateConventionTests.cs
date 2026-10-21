@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using Jellyfin.Plugin.Kids.Enforcement;
+using Jellyfin.Plugin.Kids.LiveTv;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Xunit;
@@ -106,6 +107,61 @@ public class GateConventionTests
         }
 
         Assert.Equal(GateCoverage.CheckState.Ok, coverage.State);
+    }
+
+    [Fact]
+    public void LiveTv_AttachesTheLiveTvFilterToPlaybackBrowseAndRecordingActions()
+    {
+        var application = new ApplicationModel();
+        AddController(application, "MediaInfo", ("GetPlaybackInfo", []), ("OpenLiveStream", []));
+        AddController(application, "LiveTv", [.. LiveTvActions.Expected.Select(e => (e.Action, Array.Empty<object>())), ("GetLiveStreamFile", []), ("DeleteRecording", []), ("UpdateSeriesTimer", []), ("GetGuideInfo", [])]);
+
+        var coverage = new GateCoverage();
+        new PlaybackGateConvention(coverage).Apply(application);
+
+        LiveTvRule? RuleOf(string controller, string action)
+        {
+            var model = application.Controllers.Single(c => c.ControllerName == controller).Actions.Single(a => a.ActionName == action);
+            var attached = model.Filters.OfType<ServiceFilterAttribute>().Count(f => f.ServiceType == typeof(KidsLiveTvFilter));
+            Assert.InRange(attached, 0, 1);
+            return attached == 1 ? (LiveTvRule)model.Properties[typeof(LiveTvRule)]! : null;
+        }
+
+        Assert.Equal(LiveTvRule.Playback, RuleOf("MediaInfo", "GetPlaybackInfo"));
+        Assert.Equal(LiveTvRule.Playback, RuleOf("MediaInfo", "OpenLiveStream"));
+        Assert.Equal(LiveTvRule.Playback, RuleOf("LiveTv", "GetLiveStreamFile"));
+        Assert.Equal(LiveTvRule.Recording, RuleOf("LiveTv", "GetLiveRecordingFile"));
+        Assert.Equal(LiveTvRule.Recording, RuleOf("LiveTv", "DeleteRecording"));
+        Assert.Equal(LiveTvRule.Recording, RuleOf("LiveTv", "UpdateSeriesTimer"));
+        Assert.Equal(LiveTvRule.ChannelList, RuleOf("LiveTv", "GetLiveTvChannels"));
+        Assert.Equal(LiveTvRule.ProgramListPosted, RuleOf("LiveTv", "GetPrograms"));
+        Assert.Null(RuleOf("LiveTv", "GetGuideInfo"));
+        Assert.Empty(coverage.LiveTvMissing);
+        coverage.MarkChecked();
+        Assert.Equal(GateCoverage.CheckState.Ok, coverage.LiveTvState);
+    }
+
+    [Fact]
+    public void LiveTv_MissingActionsAreReported()
+    {
+        var application = new ApplicationModel();
+        AddController(application, "LiveTv", ("GetLiveTvChannels", []));
+
+        var coverage = new GateCoverage();
+        new PlaybackGateConvention(coverage).Apply(application);
+        coverage.MarkChecked();
+
+        Assert.Equal(GateCoverage.CheckState.Degraded, coverage.LiveTvState);
+        Assert.Contains("LiveTv.GetPrograms", coverage.LiveTvMissing);
+        Assert.DoesNotContain("LiveTv.GetLiveTvChannels", coverage.LiveTvMissing);
+    }
+
+    [Fact]
+    public void LiveTv_OtherControllersActionsAreNotLiveTvRules()
+    {
+        Assert.Null(LiveTvActions.RuleFor("Items", "GetRecordingThing"));
+        Assert.Equal(LiveTvRule.Recording, LiveTvActions.RuleFor("LiveTv", "GetRecordingGroups"));
+        Assert.Null(LiveTvActions.RuleFor("LiveTv", "GetLiveTvInfo"));
     }
 
     private static void Placeholder()

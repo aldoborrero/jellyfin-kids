@@ -16,6 +16,7 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// <param name="PickedItemIds">The picked collections and playlists in order.</param>
 /// <param name="DailyAllowanceMinutes">The daily screen-time allowance in minutes, 0–1440; absent when unlimited.</param>
 /// <param name="SessionLimitMinutes">The sitting limit in minutes, 5–120, counted by each device; absent when there is none.</param>
+/// <param name="LiveTvChannelIds">The live TV channels the kid may watch, in order; empty when they have no live TV.</param>
 public record KidProfileDto(
     Guid UserId,
     long Revision,
@@ -25,7 +26,8 @@ public record KidProfileDto(
     IReadOnlyList<HomeSectionEntry> Sections,
     IReadOnlyList<Guid> PickedItemIds,
     int? DailyAllowanceMinutes,
-    int? SessionLimitMinutes)
+    int? SessionLimitMinutes,
+    IReadOnlyList<Guid> LiveTvChannelIds)
 {
     /// <summary>
     /// Maps a stored profile.
@@ -41,5 +43,6 @@ public record KidProfileDto(
         profile.Settings.Sections,
         profile.Settings.PickedItemIds,
         profile.Settings.DailyAllowanceMinutes,
-        profile.Settings.SessionLimitMinutes);
+        profile.Settings.SessionLimitMinutes,
+        profile.Settings.LiveTvChannelIds);
 }
