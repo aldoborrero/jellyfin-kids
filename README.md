@@ -45,6 +45,10 @@ Nothing leaves your server: no telemetry, no accounts, no third-party services.
 Updates appear in the catalog like any other plugin. See [docs/install.md](docs/install.md) for details
 and for installing a release by hand.
 
+> [!WARNING]
+> **Updating to 0.0.6.0 cuts every kid's live TV** until you pick their channels under **Live TV channels** in
+> Dashboard → Kids → the kid. This happens even with enforcement off; see [Live TV](#live-tv).
+
 ## What it does
 
 | | |
@@ -53,6 +57,7 @@ and for installing a release by hand.
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
 | **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today. |
 | **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only Wholphin. Off until you turn it on; see [Enforcement](#enforcement). |
+| **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
 | **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. |
@@ -88,6 +93,24 @@ our tests). A stream address with no token and no device id can't be tied to a k
 downloads are out of reach. `GET /Kids/Info` reports whether every playback route could be guarded on your Jellyfin
 version.
 
+## Live TV
+
+Jellyfin's own live TV permission is all or nothing, so the plugin adds a per-kid channel list: open the kid in
+Dashboard → Kids and tick their channels under **Live TV channels**.
+
+**After updating to 0.0.6.0, kids have no live TV until you pick their channels.** The channel rules are always on,
+whether or not enforcement is: they are a content rule, like ratings. For kids only:
+
+- Playing a channel that is not in their list is refused on every client (jellyfin-web shows "Playback of this media
+  is not allowed"; other routes answer 403 with `X-Kids-Reason: liveTvChannel`).
+- Jellyfin's own channel list and guide show only their channels; recordings and timers are refused.
+- The kid's Jellyfin user still needs **Allow Live TV access** (the editor warns when it is off), and Jellyfin's
+  ratings and "block unrated" settings still apply to channels and programs.
+- Live TV counts toward the daily allowance and the sitting, and enforcement stops it like any other playback.
+
+Kids clients read the kid's channels and guide from `GET /Kids/Users/{id}/LiveTv/Channels` and `/LiveTv/Programs`.
+Limits: generic `/Items` lookups of a channel id and images are not filtered.
+
 ## How it works
 
 Jellyfin Kids builds on what Jellyfin already does instead of copying it:
@@ -99,6 +122,7 @@ Jellyfin Kids builds on what Jellyfin already does instead of copying it:
 | Sign-in and authorization | A household parent code and short-lived parent grants |
 | Playback sessions and events | Counting kids' screen time from those events, and stopping playback when it runs out |
 | Playback and stream routes | A filter on those routes only, which refuses a kid who may not play now |
+| Live TV (all or nothing per user) | Which channels each kid may watch, held on the playback, guide and recording routes |
 
 Plugin data lives in a small SQLite database in the plugin's data folder. Admins and API keys are never
 blocked, and disabling the plugin removes everything it enforces.
@@ -121,6 +145,7 @@ The client API lives under `/Kids` and is versioned (`ApiVersion` in `GET /Kids/
 - [Daily allowance](specs/003-kids-allowance-tracking/contracts/kids-api-v1-allowance.md)
 - [Session limit](specs/004-kids-session-limit/contracts/kids-api-v1-session-limit.md)
 - [Enforcement and the sitting](specs/005-kids-enforcement/contracts/kids-api-v1-enforcement.md)
+- [Live TV](specs/006-kids-live-tv/contracts/kids-api-v1-live-tv.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 
@@ -143,7 +168,10 @@ The dev loop:
    `.dev/`. It listens on localhost only; the Android emulator reaches it at `http://10.0.2.2:8096`.
 3. `provision` finishes the startup wizard and creates the dev users: admin `admin` / `admin` and the
    kids `alice` and `bob` (`DEV_ADMIN_USER`, `DEV_ADMIN_PASSWORD` and `DEV_KIDS` change them). It also
-   adds a Kids library with a generated test clip. The admin token is written to `.dev/admin.token`.
+   adds a Kids library with a generated test clip, and a live TV tuner with two channels, PekeTV and Grown-ups News,
+   and their guide. The admin token is written to `.dev/admin.token`.
+4. `livetv` serves those two channels as live MPEG-TS streams from jellyfin-ffmpeg, on ports `JELLYFIN_KIDS_PORT` + 10
+   and + 11.
 
 Editing anything under `src/` (or `build.yaml`) rebuilds the plugin and restarts Jellyfin, since
 Jellyfin only loads plugins at startup.
@@ -152,7 +180,7 @@ Tests:
 
 ```sh
 dotnet test                # unit tests
-scripts/dev-check.sh       # checks against the running dev server: auth, answers, playback counting, pages, enforcement
+scripts/dev-check.sh       # checks against the running dev server: auth, answers, playback counting, pages, enforcement, live TV
 ```
 
 Features are planned with [spec-kit](https://github.com/github/spec-kit) under [specs/](specs/), following
@@ -166,6 +194,7 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 - [x] Daily allowance counted on the server
 - [x] Per-kid sitting limit
 - [x] Stop playback when time is up, on every client (opt-in)
+- [x] Live TV channels per kid, with their guide
 - [ ] Recommended restrictions in one step, an allowed-hours editor, and picks backed by Jellyfin collections
 - [ ] Per-kid codes, viewing history, and export and import of plugin data
 

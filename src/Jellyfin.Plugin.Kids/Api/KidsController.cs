@@ -66,7 +66,8 @@ public class KidsController : ControllerBase
             Plugin.Instance?.Version.ToString() ?? string.Empty,
             ApiVersion: 1,
             Features: KidsInfo.SupportedFeatures,
-            Enforcement: EnforcementInfo.From(_coverage));
+            Enforcement: EnforcementInfo.From(_coverage),
+            LiveTv: EnforcementInfo.FromLiveTv(_coverage));
 
     /// <summary>
     /// Lists the kids, so a user switcher can tell who they are.

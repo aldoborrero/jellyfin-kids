@@ -34,7 +34,7 @@ public sealed class UsageServiceTests : IDisposable
     {
         _db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
         _store = new UsageStore(_db);
-        _profiles = new KidProfileService(new KidProfileStore(_db), _users, new FakePickCatalog(), new KidRoster());
+        _profiles = new KidProfileService(new KidProfileStore(_db), _users, new FakePickCatalog(), new FakeLiveTvChannelCatalog(), new KidRoster());
         _service = new UsageService(_store, _profiles, _settings, _time, NullLogger<UsageService>.Instance);
         _users.Users.Add(_alice);
         _users.Users.Add(_bob);
@@ -112,7 +112,7 @@ public sealed class UsageServiceTests : IDisposable
         }
 
         using var db = new KidsDatabase(broken.Path, NullLogger<KidsDatabase>.Instance);
-        var profiles = new KidProfileService(new KidProfileStore(db), _users, new FakePickCatalog(), new KidRoster());
+        var profiles = new KidProfileService(new KidProfileStore(db), _users, new FakePickCatalog(), new FakeLiveTvChannelCatalog(), new KidRoster());
         using var service = new UsageService(new UsageStore(db), profiles, _settings, _time, NullLogger<UsageService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetStatusAsync(_alice, TestContext.Current.CancellationToken));

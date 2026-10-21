@@ -158,7 +158,7 @@ public sealed class EnforcementService : IHostedService, IDisposable
             status.UsedSeconds * 1000,
             status.AllowanceSeconds is long allowance ? (int)(allowance / 60) : null,
             (int)(status.BonusSeconds / 60));
-        _state.SetKid(kid, budget, profile.Settings.SessionLimitMinutes, _users.GetUserById(kid));
+        _state.SetKid(kid, budget, profile.Settings.SessionLimitMinutes, _users.GetUserById(kid), profile.Settings.LiveTvChannelIds);
     }
 
     /// <summary>
@@ -294,6 +294,11 @@ public sealed class EnforcementService : IHostedService, IDisposable
             foreach (var missing in _coverage.Missing)
             {
                 _logger.LogWarning("Kids enforcement cannot guard {Action}: this Jellyfin version does not have it", missing);
+            }
+
+            foreach (var missing in _coverage.LiveTvMissing)
+            {
+                _logger.LogWarning("Kids live TV rules cannot attach to {Action}: this Jellyfin version does not have it", missing);
             }
 
             foreach (var extra in _coverage.Matched.Where(m => !m.ByName))

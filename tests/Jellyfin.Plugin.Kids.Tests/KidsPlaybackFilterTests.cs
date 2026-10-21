@@ -44,8 +44,8 @@ public class KidsPlaybackFilterTests
         var response = Assert.IsType<PlaybackInfoResponse>(ok.Value);
         Assert.Equal(PlaybackErrorCode.NotAllowed, response.ErrorCode);
         Assert.Empty(response.MediaSources);
-        Assert.Equal("timeUp", context.HttpContext.Response.Headers[KidsPlaybackFilter.ReasonHeader]);
-        Assert.False(context.HttpContext.Response.Headers.ContainsKey(KidsPlaybackFilter.ErrorCodeHeader));
+        Assert.Equal("timeUp", context.HttpContext.Response.Headers[PlaybackRefusal.ReasonHeader]);
+        Assert.False(context.HttpContext.Response.Headers.ContainsKey(PlaybackRefusal.ErrorCodeHeader));
     }
 
     [Theory]
@@ -57,14 +57,14 @@ public class KidsPlaybackFilterTests
         var (context, ran) = await RunAsync(User(Kid), kind);
 
         Assert.False(ran);
-        var result = Assert.IsType<ObjectResult>(context.Result);
+        var result = Assert.IsType<JsonResult>(context.Result);
         Assert.Equal(403, result.StatusCode);
-        Assert.Equal(["application/problem+json"], result.ContentTypes);
+        Assert.Equal("application/problem+json", result.ContentType);
         var problem = Assert.IsType<ProblemDetails>(result.Value);
         Assert.Equal("timeUp", problem.Extensions["reason"]);
         Assert.Equal("2026-10-19T22:00:00.0000000Z", problem.Extensions["until"]);
-        Assert.Equal("PlaybackNotAllowed", context.HttpContext.Response.Headers[KidsPlaybackFilter.ErrorCodeHeader]);
-        Assert.Equal("timeUp", context.HttpContext.Response.Headers[KidsPlaybackFilter.ReasonHeader]);
+        Assert.Equal("PlaybackNotAllowed", context.HttpContext.Response.Headers[PlaybackRefusal.ErrorCodeHeader]);
+        Assert.Equal("timeUp", context.HttpContext.Response.Headers[PlaybackRefusal.ReasonHeader]);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class KidsPlaybackFilterTests
         var (context, ran) = await RunAsync(new ClaimsPrincipal(new ClaimsIdentity()), GateKind.Deliver, query: "?static=true&deviceId=tv-1");
 
         Assert.False(ran);
-        Assert.Equal(403, Assert.IsType<ObjectResult>(context.Result).StatusCode);
+        Assert.Equal(403, Assert.IsType<JsonResult>(context.Result).StatusCode);
     }
 
     [Fact]

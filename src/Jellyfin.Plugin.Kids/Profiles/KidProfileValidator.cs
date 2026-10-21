@@ -14,10 +14,11 @@ public static class KidProfileValidator
     /// Validates settings sent by a client.
     /// </summary>
     /// <param name="input">The settings as sent.</param>
-    /// <param name="storedPicks">The picks already stored for this kid; they are kept even if the item was deleted.</param>
+    /// <param name="stored">The kid's stored settings, or null for a new kid: stored picks and channels are kept even if the item was deleted.</param>
     /// <param name="catalog">The server's collections and playlists, used to check new picks.</param>
+    /// <param name="channels">The server's live TV channels, used to check newly allowed channels.</param>
     /// <returns>The normalised settings, or every error keyed by field.</returns>
-    public static ValidationResult Validate(KidProfileInput input, IReadOnlyCollection<Guid> storedPicks, IPickCatalog catalog)
+    public static ValidationResult Validate(KidProfileInput input, KidProfileSettings? stored, IPickCatalog catalog, ILiveTvChannelCatalog channels)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -40,7 +41,8 @@ public static class KidProfileValidator
         }
 
         var sections = ValidateSections(input.Sections ?? [], errors);
-        var picks = ValidatePicks(input.PickedItemIds ?? [], storedPicks, catalog, errors);
+        var picks = ValidatePicks(input.PickedItemIds ?? [], stored?.PickedItemIds ?? [], catalog, errors);
+        var liveTv = ValidateChannels(input.LiveTvChannelIds ?? [], stored?.LiveTvChannelIds ?? [], channels, errors);
 
         if (errors.Count > 0)
         {
@@ -55,7 +57,8 @@ public static class KidProfileValidator
             Sections = HomeSectionEntry.Normalize(sections),
             PickedItemIds = picks,
             DailyAllowanceMinutes = allowance,
-            SessionLimitMinutes = sessionLimit
+            SessionLimitMinutes = sessionLimit,
+            LiveTvChannelIds = liveTv
         };
         return new ValidationResult(settings, errors);
     }
@@ -115,5 +118,33 @@ public static class KidProfileValidator
         }
 
         return [.. picks];
+    }
+
+    private static List<Guid> ValidateChannels(IReadOnlyList<Guid> ids, IReadOnlyCollection<Guid> storedIds, ILiveTvChannelCatalog channels, Dictionary<string, string[]> errors)
+    {
+        if (ids.Count > KidProfileSettings.MaxLiveTvChannels)
+        {
+            errors["LiveTvChannelIds"] = [string.Create(CultureInfo.InvariantCulture, $"At most {KidProfileSettings.MaxLiveTvChannels} channels.")];
+            return [];
+        }
+
+        // Like picks: a stored channel stays valid after it was removed from the server, so other fields can still be saved
+        var stored = storedIds.ToHashSet();
+        var resolved = channels.Resolve(ids.Where(id => !stored.Contains(id)).Distinct()).Select(c => c.Id).ToHashSet();
+        var seen = new HashSet<Guid>();
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var key = string.Create(CultureInfo.InvariantCulture, $"LiveTvChannelIds[{i}]");
+            if (!seen.Add(ids[i]))
+            {
+                errors[key] = ["Listed more than once."];
+            }
+            else if (!stored.Contains(ids[i]) && !resolved.Contains(ids[i]))
+            {
+                errors[key] = ["Not a live TV channel."];
+            }
+        }
+
+        return [.. ids];
     }
 }

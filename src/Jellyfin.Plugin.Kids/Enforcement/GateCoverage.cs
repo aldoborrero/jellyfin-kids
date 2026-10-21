@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Jellyfin.Plugin.Kids.LiveTv;
 
 namespace Jellyfin.Plugin.Kids.Enforcement;
 
@@ -12,6 +13,7 @@ public sealed class GateCoverage
 {
     private readonly Lock _lock = new();
     private readonly List<(string Controller, string Action, GateKind Kind, bool ByName)> _matched = [];
+    private readonly HashSet<string> _liveTv = [];
     private bool _checked;
 
     /// <summary>
@@ -61,6 +63,43 @@ public sealed class GateCoverage
     }
 
     /// <summary>
+    /// Gets the expected live TV actions (<see cref="LiveTvActions.Expected"/>) that were not found, as
+    /// <c>LiveTv.Action</c>.
+    /// </summary>
+    public IReadOnlyList<string> LiveTvMissing
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return LiveTvActions.Expected
+                    .Where(e => !_liveTv.Contains(e.Action))
+                    .Select(e => LiveTvActions.Controller + "." + e.Action)
+                    .ToList();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the state of the startup check for the live TV actions.
+    /// </summary>
+    public CheckState LiveTvState
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (!_checked)
+                {
+                    return CheckState.Pending;
+                }
+            }
+
+            return LiveTvMissing.Count == 0 ? CheckState.Ok : CheckState.Degraded;
+        }
+    }
+
+    /// <summary>
     /// Gets the state of the startup check.
     /// </summary>
     public CheckState State
@@ -94,6 +133,18 @@ public sealed class GateCoverage
             {
                 _matched.Add((controller, action, kind, byName));
             }
+        }
+    }
+
+    /// <summary>
+    /// Records a live TV controller action the live TV rules attached to.
+    /// </summary>
+    /// <param name="action">The action name.</param>
+    public void AddLiveTv(string action)
+    {
+        lock (_lock)
+        {
+            _liveTv.Add(action);
         }
     }
 

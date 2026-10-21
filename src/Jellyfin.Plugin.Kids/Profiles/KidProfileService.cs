@@ -17,6 +17,7 @@ public sealed class KidProfileService
     private readonly KidProfileStore _store;
     private readonly IKidsUserDirectory _users;
     private readonly IPickCatalog _catalog;
+    private readonly ILiveTvChannelCatalog _channels;
     private readonly KidRoster _roster;
 
     /// <summary>
@@ -25,12 +26,14 @@ public sealed class KidProfileService
     /// <param name="store">The profile store.</param>
     /// <param name="users">The Jellyfin users.</param>
     /// <param name="catalog">The server's collections and playlists.</param>
+    /// <param name="channels">The server's live TV channels.</param>
     /// <param name="roster">The in-memory kid ids, kept in step with marks and unmarks.</param>
-    public KidProfileService(KidProfileStore store, IKidsUserDirectory users, IPickCatalog catalog, KidRoster roster)
+    public KidProfileService(KidProfileStore store, IKidsUserDirectory users, IPickCatalog catalog, ILiveTvChannelCatalog channels, KidRoster roster)
     {
         _store = store;
         _users = users;
         _catalog = catalog;
+        _channels = channels;
         _roster = roster;
     }
 
@@ -94,7 +97,7 @@ public sealed class KidProfileService
             return new SaveResult(SaveOutcome.Conflict, current);
         }
 
-        var validation = KidProfileValidator.Validate(input, current?.Settings.PickedItemIds ?? [], _catalog);
+        var validation = KidProfileValidator.Validate(input, current?.Settings, _catalog, _channels);
         if (!validation.IsValid)
         {
             return new SaveResult(SaveOutcome.Invalid, Errors: validation.Errors);

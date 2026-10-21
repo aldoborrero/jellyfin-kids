@@ -72,4 +72,57 @@ for ((waited = 0; ; waited += 2)); do
   sleep 2
 done
 
-echo "Dev server ready at $url (admin: $admin_user / $admin_password, kids: ${kids[*]})"
+# Live TV (feature 6), shaped like the household's ErsatzTV tuner: an M3U tuner with two live MPEG-TS channels over
+# HTTP (scripts/dev-livetv.sh, the livetv process), a kids one and a grown-up one, and an XMLTV guide with 30-minute
+# programs for the next two days. Jellyfin 12.2 only takes HTTP entries from an M3U
+livetv="$dev/livetv"
+livetv_port=${JELLYFIN_KIDS_PORT:-8096}
+mkdir -p "$livetv"
+cat >"$livetv/channels.m3u" <<M3U
+#EXTM3U
+#EXTINF:-1 tvg-id="peketv" tvg-chno="1" tvg-name="PekeTV",PekeTV
+http://127.0.0.1:$((livetv_port + 10))/peketv.ts
+#EXTINF:-1 tvg-id="news" tvg-chno="2" tvg-name="Grown-ups News",Grown-ups News
+http://127.0.0.1:$((livetv_port + 11))/news.ts
+M3U
+
+# Rewritten on every run, so the guide always covers the next 48 hours from the last half hour
+guide_start=$(($(date +%s) / 1800 * 1800))
+{
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<tv generator-info-name="jellyfin-kids-dev">'
+  echo '  <channel id="peketv"><display-name>PekeTV</display-name></channel>'
+  echo '  <channel id="news"><display-name>Grown-ups News</display-name></channel>'
+  for ((slot = 0; slot < 96; slot++)); do
+    from=$(date -u -d "@$((guide_start + slot * 1800))" +'%Y%m%d%H%M%S +0000')
+    to=$(date -u -d "@$((guide_start + (slot + 1) * 1800))" +'%Y%m%d%H%M%S +0000')
+    echo "  <programme start=\"$from\" stop=\"$to\" channel=\"peketv\"><title>Cartoons $slot</title><desc>Kids show</desc></programme>"
+    echo "  <programme start=\"$from\" stop=\"$to\" channel=\"news\"><title>News $slot</title><desc>Grown-up news</desc></programme>"
+  done
+  echo '</tv>'
+} >"$livetv/guide.xml"
+
+livetv_config=$(api GET /System/Configuration/livetv)
+# Saved on every run (with its id when it exists), so a changed setting reaches older dev servers; stream sharing is
+# what ErsatzTV channels get, and serves them through LiveTv/LiveStreamFiles
+tuner_id=$(jq -r --arg u "$livetv/channels.m3u" '[.TunerHosts[]? | select(.Url == $u)][0].Id // ""' <<<"$livetv_config")
+api POST /LiveTv/TunerHosts -d "$(jq -n --arg id "$tuner_id" --arg u "$livetv/channels.m3u" '{Type: "m3u", Url: $u,
+  FriendlyName: "Dev tuner", EnableStreamLooping: false, ReadAtNativeFramerate: false, AllowStreamSharing: true,
+  AllowHWTranscoding: false, TunerCount: 0, ImportFavoritesOnly: false, IgnoreDts: true} + (if $id == "" then {} else {Id: $id} end)')" >/dev/null
+if ! jq --exit-status --arg p "$livetv/guide.xml" 'any(.ListingProviders[]?; .Path == $p)' <<<"$livetv_config" >/dev/null; then
+  echo "Adding the dev XMLTV guide"
+  api POST '/LiveTv/ListingProviders?validateListings=false&validateLogin=false' \
+    -d "$(jq -n --arg p "$livetv/guide.xml" '{Type: "xmltv", Path: $p, EnableAllTuners: true}')" >/dev/null
+fi
+
+refresh_guide=$(api GET /ScheduledTasks | jq -r '.[] | select(.Key == "RefreshGuide") | .Id')
+api POST "/ScheduledTasks/Running/$refresh_guide" >/dev/null
+for ((waited = 0; ; waited += 2)); do
+  api GET '/LiveTv/Programs?Limit=1&HasAired=false' | jq --exit-status '.TotalRecordCount > 0' >/dev/null 2>&1 \
+    && api GET /LiveTv/Channels | jq --exit-status '[.Items[].Name] | (index("PekeTV") != null) and (index("Grown-ups News") != null)' >/dev/null \
+    && break
+  ((waited < 180)) || { echo "The live TV channels or their guide did not show up within 180 s" >&2; exit 1; }
+  sleep 2
+done
+
+echo "Dev server ready at $url (admin: $admin_user / $admin_password, kids: ${kids[*]}; live TV: PekeTV, Grown-ups News)"

@@ -1,6 +1,7 @@
 // The kid settings editor: the daily screen-time allowance, the session limit and today's bonus minutes; search,
-// autoplay and its limit; home sections (order and visibility); and the picked collections and playlists. Saves with
-// the loaded revision; a conflict never overwrites. Bonus minutes are added straight away, apart from the save.
+// autoplay and its limit; home sections (order and visibility); the picked collections and playlists; and the live TV
+// channels the kid may watch. Saves with the loaded revision; a conflict never overwrites. Bonus minutes are added
+// straight away, apart from the save.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -132,6 +133,8 @@ export default function (view, params) {
     let revision = 0;
     let sections = [];
     let picks = []; // { Id, Name, Type, missing }
+    let serverChannels = null; // the server's live TV channels, or null when they could not be read
+    let channels = []; // { Id, Name, Number, ImageTag, Type, missing, allowed }
     let conflictProfile = null;
     let searchTimer = null;
 
@@ -261,6 +264,79 @@ export default function (view, params) {
         }));
     }
 
+    // Live TV: stored channels that are gone from the server come first, still ticked; then every server channel
+    function mergeChannels(allowedIds) {
+        const allowed = new Set(allowedIds);
+        const known = new Set((serverChannels || []).map((channel) => channel.Id));
+        const missing = allowedIds
+            .filter((id) => !known.has(id))
+            .map((id) => ({ Id: id, Name: '', Number: null, ImageTag: null, Type: 'TV', missing: true, allowed: true }));
+        channels = missing.concat((serverChannels || []).map((channel) => Object.assign({}, channel, { missing: false, allowed: allowed.has(channel.Id) })));
+    }
+
+    function channelLogo(channel) {
+        if (channel.ImageTag) {
+            const image = element('img', 'kidsChannelLogo');
+            image.alt = '';
+            image.loading = 'lazy';
+            image.src = ApiClient.getScaledImageUrl(channel.Id, { type: 'Primary', tag: channel.ImageTag, maxHeight: 64 });
+            return image;
+        }
+
+        const icon = element('span', 'material-icons kidsChannelIcon ' + (channel.Type === 'Radio' ? 'radio' : 'live_tv'));
+        icon.setAttribute('aria-hidden', 'true');
+        return icon;
+    }
+
+    function renderLiveTvNotice() {
+        view.querySelector('.kidsLiveTvNone').hidden = channels.some((channel) => channel.allowed);
+    }
+
+    function renderChannels() {
+        const list = view.querySelector('.kidsChannels');
+        renderLiveTvNotice();
+        if (serverChannels === null && channels.length === 0) {
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Could not load the live TV channels.'));
+            return;
+        }
+
+        if (channels.length === 0) {
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'This server has no live TV channels.'));
+            return;
+        }
+
+        list.replaceChildren(...channels.map((channel) => {
+            const item = row('listItem-border');
+            const label = element('label');
+            const checkbox = element('input');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.checked = channel.allowed;
+            checkbox.addEventListener('change', () => {
+                channel.allowed = checkbox.checked;
+                renderLiveTvNotice();
+            });
+            const text = element('span');
+            text.append(channelLogo(channel), channel.missing ? 'Missing (removed from the server)' : channel.Name);
+            if (channel.missing || channel.Number) {
+                text.append(element('span', 'kidsChannelNumber', channel.missing ? channel.Id : channel.Number));
+            }
+
+            label.append(checkbox, text);
+            item.append(label);
+            return item;
+        }));
+    }
+
+    // Warnings from the kid's Jellyfin policy: live TV access is all or nothing, and unrated live TV may be blocked
+    function renderLiveTvWarnings(user) {
+        const policy = (user && user.Policy) || {};
+        view.querySelector('.kidsLiveTvAccessOff').hidden = policy.EnableLiveTvAccess !== false;
+        const blocked = policy.BlockUnratedItems || [];
+        view.querySelector('.kidsLiveTvUnrated').hidden = !blocked.includes('LiveTvChannel') && !blocked.includes('LiveTvProgram');
+        view.querySelector('.kidsUserProfileLink').href = '#/dashboard/users/' + userId + '/profile';
+    }
+
     function renderResults(candidates, term) {
         if (candidates.length === 0) {
             results.replaceChildren(element(
@@ -309,11 +385,14 @@ export default function (view, params) {
         sessionLimit.load(profile.SessionLimitMinutes);
         sections = profile.Sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible }));
         picks = profile.PickedItemIds.map((id) => ({ Id: id, Name: '', Type: null, missing: true }));
+        // Older plugins have no live TV field; the editor then shows the server's channels unticked
+        mergeChannels(profile.LiveTvChannelIds || []);
         clearErrors();
         view.querySelector('.kidsConflict').hidden = true;
         renderCap();
         renderSections();
         renderPicks();
+        renderChannels();
 
         if (picks.length === 0) {
             return Promise.resolve();
@@ -398,9 +477,13 @@ export default function (view, params) {
         Dashboard.showLoadingMsg();
         showMessage(null);
         form.hidden = true;
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId)])
-            .then(([profile, user]) => {
+        // The channel list is not needed to edit the rest: if it fails, the section says so
+        const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels').catch(() => null);
+        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels])
+            .then(([profile, user, serverList]) => {
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
+                serverChannels = serverList;
+                renderLiveTvWarnings(user);
                 return applyProfile(profile).then(() => {
                     form.hidden = false;
                     loadUsage();
@@ -437,7 +520,8 @@ export default function (view, params) {
             PickedItemIds: picks.map((pick) => pick.Id),
             // Always sent: the update is a full replacement, and omitting them would clear them
             DailyAllowanceMinutes: allowance.value(),
-            SessionLimitMinutes: sessionLimit.value()
+            SessionLimitMinutes: sessionLimit.value(),
+            LiveTvChannelIds: channels.filter((channel) => channel.allowed).map((channel) => channel.Id)
         };
 
         Dashboard.showLoadingMsg();

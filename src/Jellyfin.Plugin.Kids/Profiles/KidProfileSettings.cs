@@ -32,6 +32,9 @@ public sealed record KidProfileSettings
     /// <summary>The longest session limit, in minutes.</summary>
     public const int MaxSessionLimit = 120;
 
+    /// <summary>The most live TV channels a kid can be allowed.</summary>
+    public const int MaxLiveTvChannels = 200;
+
     /// <summary>
     /// Gets a value indicating whether the kid may search.
     /// </summary>
@@ -67,4 +70,9 @@ public sealed record KidProfileSettings
     /// default. The server only stores it: each device counts its own sittings.
     /// </summary>
     public int? SessionLimitMinutes { get; init; }
+
+    /// <summary>
+    /// Gets the live TV channels the kid may watch, in order. Empty, the default, means no live TV.
+    /// </summary>
+    public IReadOnlyList<Guid> LiveTvChannelIds { get; init; } = [];
 }

@@ -233,6 +233,7 @@ public sealed class KidProfileStoreTests : IDisposable
 
         Assert.Null(profile!.Settings.SessionLimitMinutes);
         Assert.Equal(45, profile.Settings.DailyAllowanceMinutes);
+        Assert.Empty(profile.Settings.LiveTvChannelIds);
     }
 
     [Fact]
@@ -252,5 +253,18 @@ public sealed class KidProfileStoreTests : IDisposable
         await _store.UpdateIfRevisionAsync(userId, 2, new KidProfileSettings());
 
         Assert.Null((await _store.GetAsync(userId))!.Settings.SessionLimitMinutes);
+    }
+
+    [Fact]
+    public async Task InsertAndUpdate_KeepTheLiveTvChannelsInOrder()
+    {
+        var userId = Guid.NewGuid();
+        Guid[] channels = [Guid.NewGuid(), Guid.NewGuid()];
+        await _store.InsertAsync(userId, new KidProfileSettings { LiveTvChannelIds = channels });
+        Assert.Equal(channels, (await _store.GetAsync(userId))!.Settings.LiveTvChannelIds);
+
+        await _store.UpdateIfRevisionAsync(userId, 1, new KidProfileSettings());
+
+        Assert.Empty((await _store.GetAsync(userId))!.Settings.LiveTvChannelIds);
     }
 }

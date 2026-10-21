@@ -47,3 +47,12 @@ processes:
         condition: process_healthy
     availability:
       restart: "no"
+
+  livetv:
+    description: Two live MPEG-TS channels for the dev M3U tuner, on 127.0.0.1 ports JELLYFIN_KIDS_PORT + 10 and + 11
+    command: scripts/dev-livetv.sh
+    availability:
+      restart: on_failure
+    shutdown:
+      signal: 15
+      timeout_seconds: 5

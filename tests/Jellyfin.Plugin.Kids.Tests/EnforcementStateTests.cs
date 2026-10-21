@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Jellyfin.Data;
 using Jellyfin.Data.Events;
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
@@ -215,5 +216,57 @@ public class EnforcementStateTests
         Assert.Equal(Kid, _state.KidForDevice("tv-1"));
         Assert.Equal(Guid.Empty, _state.KidForDevice("laptop"));
         Assert.Equal(Guid.Empty, _state.KidForDevice("nope"));
+    }
+
+    [Fact]
+    public void LiveTv_AllowedChannelsAreTheProfileList_WhenLiveTvAccessIsOn()
+    {
+        var peke = Guid.NewGuid();
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), null, LiveTvUser(true), [peke]);
+
+        Assert.Equal([peke], _state.AllowedChannels(Kid));
+    }
+
+    [Fact]
+    public void LiveTv_AccessOff_AllowsNothing_AndAUserUpdateAppliesAtOnce()
+    {
+        var peke = Guid.NewGuid();
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), null, LiveTvUser(false), [peke]);
+        Assert.Empty(_state.AllowedChannels(Kid));
+
+        _state.SetUser(Kid, LiveTvUser(true));
+
+        Assert.Equal([peke], _state.AllowedChannels(Kid));
+    }
+
+    [Fact]
+    public void LiveTv_NoListOrNoUser_AllowsNothing()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), null, LiveTvUser(true));
+        Assert.Empty(_state.AllowedChannels(Kid));
+
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), null, null, [Guid.NewGuid()]);
+        Assert.Empty(_state.AllowedChannels(Kid));
+    }
+
+    [Fact]
+    public void LiveTv_KidNotLoadedYet_AllowsNothingAndAsksForALoad()
+    {
+        Assert.Empty(_state.AllowedChannels(Kid));
+        Assert.Equal([Kid], _reloads);
+    }
+
+    [Fact]
+    public void LiveTv_NotAKid_AllowsNothingWithoutALoad()
+    {
+        Assert.Empty(_state.AllowedChannels(Guid.NewGuid()));
+        Assert.Empty(_reloads);
+    }
+
+    private static User LiveTvUser(bool liveTvAccess)
+    {
+        var user = new User("alice", "auth", "reset");
+        user.SetPermission(PermissionKind.EnableLiveTvAccess, liveTvAccess);
+        return user;
     }
 }

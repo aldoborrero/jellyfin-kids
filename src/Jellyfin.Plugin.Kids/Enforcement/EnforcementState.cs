@@ -6,7 +6,9 @@ using System.Threading;
 using Jellyfin.Data;
 using Jellyfin.Data.Events;
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using Jellyfin.Plugin.Kids.Allowance;
+using Jellyfin.Plugin.Kids.LiveTv;
 
 namespace Jellyfin.Plugin.Kids.Enforcement;
 
@@ -19,12 +21,14 @@ namespace Jellyfin.Plugin.Kids.Enforcement;
 /// <see cref="EnforcementService"/> loads each kid at startup and again when something changes; the tracker adds
 /// counted time as it happens. A kid not loaded yet is never denied for time (fail open) and asks for a load.
 /// </remarks>
-public sealed class EnforcementState : IPlaybackGate
+public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
 {
     /// <summary>How often a kid that cannot be loaded asks again.</summary>
     public static readonly TimeSpan ReloadRetry = TimeSpan.FromSeconds(30);
 
     private static readonly TimeSpan WarnHorizon = TimeSpan.FromSeconds(StatusCalculator.WarnAtSeconds.Max());
+
+    private static readonly IReadOnlySet<Guid> Empty = new HashSet<Guid>();
 
     private readonly KidRoster _roster;
     private readonly IKidsSettings _settings;
@@ -62,14 +66,16 @@ public sealed class EnforcementState : IPlaybackGate
     /// <param name="kid">The kid.</param>
     /// <param name="budget">Today's budget.</param>
     /// <param name="sittingLimitMinutes">The sitting limit, or null.</param>
-    /// <param name="user">The Jellyfin user, for the allowed hours; null if not found.</param>
-    public void SetKid(Guid kid, KidBudget budget, int? sittingLimitMinutes, User? user)
+    /// <param name="user">The Jellyfin user, for the allowed hours and live TV access; null if not found.</param>
+    /// <param name="liveTvChannels">The live TV channels the profile allows; none if null.</param>
+    public void SetKid(Guid kid, KidBudget budget, int? sittingLimitMinutes, User? user, IReadOnlyCollection<Guid>? liveTvChannels = null)
     {
         lock (_lock)
         {
             var state = GetOrAdd(kid);
             state.Budget = budget;
             state.SittingLimitMinutes = sittingLimitMinutes;
+            state.LiveTvChannels = liveTvChannels is null ? Empty : new HashSet<Guid>(liveTvChannels);
             state.User = user;
             state.ReloadAskedAt = null;
         }
@@ -187,6 +193,40 @@ public sealed class EnforcementState : IPlaybackGate
 
         denial = found;
         return true;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlySet<Guid> AllowedChannels(Guid kid)
+    {
+        if (!_roster.Contains(kid))
+        {
+            return Empty;
+        }
+
+        IReadOnlySet<Guid> allowed;
+        var reload = false;
+        lock (_lock)
+        {
+            var state = GetOrAdd(kid);
+            if (state.Budget is null)
+            {
+                // Not loaded yet: no live TV until it is (a content rule fails closed for the kid)
+                reload = AskReload(state, DateTimeOffset.UtcNow);
+                allowed = Empty;
+            }
+            else
+            {
+                // Jellyfin's all-or-nothing switch wins over the list
+                allowed = state.User?.HasPermission(PermissionKind.EnableLiveTvAccess) == true ? state.LiveTvChannels : Empty;
+            }
+        }
+
+        if (reload)
+        {
+            ReloadRequested?.Invoke(this, new GenericEventArgs<Guid>(kid));
+        }
+
+        return allowed;
     }
 
     /// <inheritdoc />
@@ -314,6 +354,8 @@ public sealed class EnforcementState : IPlaybackGate
 
     private sealed class KidState
     {
+        public IReadOnlySet<Guid> LiveTvChannels { get; set; } = Empty;
+
         public KidBudget? Budget { get; set; }
 
         public int? SittingLimitMinutes { get; set; }

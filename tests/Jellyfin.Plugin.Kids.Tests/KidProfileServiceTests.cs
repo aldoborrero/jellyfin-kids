@@ -22,7 +22,7 @@ public sealed class KidProfileServiceTests : IDisposable
     public KidProfileServiceTests()
     {
         _db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
-        _service = new KidProfileService(new KidProfileStore(_db), _users, _catalog, _roster);
+        _service = new KidProfileService(new KidProfileStore(_db), _users, _catalog, new FakeLiveTvChannelCatalog(), _roster);
         _users.Users.Add(_alice);
     }
 
@@ -164,7 +164,7 @@ public sealed class KidProfileServiceTests : IDisposable
         await _service.SaveAsync(bob, 0, new KidProfileInput());
         var roster = new KidRoster();
 
-        await new KidProfileService(new KidProfileStore(_db), _users, _catalog, roster).LoadRosterAsync(TestContext.Current.CancellationToken);
+        await new KidProfileService(new KidProfileStore(_db), _users, _catalog, new FakeLiveTvChannelCatalog(), roster).LoadRosterAsync(TestContext.Current.CancellationToken);
 
         Assert.True(roster.IsLoaded);
         Assert.True(roster.Contains(_alice));

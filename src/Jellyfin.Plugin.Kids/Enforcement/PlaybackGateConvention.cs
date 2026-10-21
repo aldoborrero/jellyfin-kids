@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Reflection;
+using Jellyfin.Plugin.Kids.LiveTv;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 
@@ -9,7 +10,8 @@ namespace Jellyfin.Plugin.Kids.Enforcement;
 
 /// <summary>
 /// Attaches <see cref="KidsPlaybackFilter"/> to Jellyfin's playback actions only, so every other request carries no
-/// filter at all (research R2, R3). Runs once, while MVC builds its action list.
+/// filter at all (research R2, R3), and <see cref="KidsLiveTvFilter"/> to those and to Jellyfin's live TV browse and
+/// recording actions (feature 6, research R3). Runs once, while MVC builds its action list.
 /// </summary>
 /// <remarks>
 /// An action is guarded when its controller and action names are in <see cref="GateActions.Expected"/>, or when it
@@ -45,6 +47,19 @@ public sealed class PlaybackGateConvention : IApplicationModelConvention
             foreach (var action in controller.Actions)
             {
                 var kind = Match(controller.ControllerName, action);
+
+                // Live TV (feature 6): every playback action, plus Jellyfin's live TV browse and recording actions
+                var rule = LiveTvActions.RuleFor(controller.ControllerName, action.ActionName) ?? (kind is null ? null : LiveTvRule.Playback);
+                if (rule is not null)
+                {
+                    action.Filters.Add(new ServiceFilterAttribute(typeof(KidsLiveTvFilter)) { IsReusable = true });
+                    action.Properties[typeof(LiveTvRule)] = rule.Value;
+                    if (controller.ControllerName == LiveTvActions.Controller)
+                    {
+                        _coverage.AddLiveTv(action.ActionName);
+                    }
+                }
+
                 if (kind is null)
                 {
                     continue;

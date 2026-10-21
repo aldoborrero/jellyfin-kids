@@ -840,6 +840,237 @@ check "bj admin unmarks alice with purge" 204
 req "$admin" PUT "/Kids/Users/$alice_id/Profile" '{"Revision":0}'
 check "bj admin marks alice again, with no allowance and no time used" 200
 
+# Live TV (feature 6, quickstart.md §2 ca–cv). Always on: enforcement stays off here, as bj left it. Provisioning added
+# PekeTV and Grown-ups News; alice is a kid with live TV access (Jellyfin's default)
+req "$admin" GET /LiveTv/Channels
+peke=$(jq -r '[.Items[] | select(.Name == "PekeTV")][0].Id // empty' <<<"$body")
+news=$(jq -r '[.Items[] | select(.Name == "Grown-ups News")][0].Id // empty' <<<"$body")
+[[ -n $peke && -n $news ]] || { echo "The dev live TV channels are missing; run the provision step" >&2; exit 1; }
+# ids compare without dashes, whatever form an answer uses
+nid() { tr -d '-' <<<"${1,,}"; }
+peke=$(nid "$peke")
+news=$(nid "$news")
+
+# req_hb <token|-> <deviceId> <method> <path> <json body>: like req_h, with a body
+req_hb() {
+  local token=$1 device=$2 method=$3 path=$4 data=$5 out hdr
+  local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\""
+  [[ $token != - ]] && auth+=", Token=\"$token\""
+  out=$(mktemp)
+  hdr=$(mktemp)
+  status=$(curl --silent --max-time 60 --output "$out" --dump-header "$hdr" --write-out '%{http_code}' -X "$method" "$url$path" \
+    -H "Authorization: $auth" -H 'Content-Type: application/json' --data "$data") || status=000
+  body=$(head -c 200000 "$out" | tr -d '\000')
+  headers=$(tr -d '\r' <"$hdr" | tr '[:upper:]' '[:lower:]')
+  rm -f "$out" "$hdr"
+}
+
+# not_allowed <name>: the last answer is PlaybackInfo 200 NotAllowed with X-Kids-Reason liveTvChannel
+not_allowed() {
+  if [[ $status == 200 ]] && jq -e '.ErrorCode == "NotAllowed" and ((.MediaSources // []) | length) == 0' <<<"$body" >/dev/null 2>&1 \
+    && grep -qx 'x-kids-reason: livetvchannel' <<<"$headers"; then
+    echo "PASS $1"
+  else
+    echo "FAIL $1: $status $(grep -E '^x-kids-reason' <<<"$headers") ${body:0:200}"
+    failures=$((failures + 1))
+  fi
+}
+
+# live_info <token> <deviceId> <channel>: PlaybackInfo that opens the live stream, as clients do
+live_info() {
+  req_hb "$1" "$2" POST "/Items/$3/PlaybackInfo?UserId=$(user_of "$1")" \
+    '{"AutoOpenLiveStream": true, "EnableDirectPlay": false, "EnableDirectStream": true, "EnableTranscoding": true}'
+}
+user_of() { if [[ $1 == "$alice" ]]; then echo "$alice_id"; else echo ""; fi; }
+
+# ca. Info reports live TV
+req - GET /Kids/Info
+check "ca Info lists liveTv and its routes are all found" 200 \
+  '(.Features | index("liveTv")) != null and .LiveTv.Gate == "ok" and (.LiveTv.Missing | length) == 0'
+
+# cb. The editor's channel list is for administrators only
+req "$admin" GET /Kids/Admin/LiveTvChannels
+check "cb admin lists both channels with their numbers" 200 \
+  "[.[] | {id: (.Id | gsub(\"-\"; \"\") | ascii_downcase), Number, Type}] | (index({id: \"$peke\", Number: \"1\", Type: \"TV\"}) != null) and (index({id: \"$news\", Number: \"2\", Type: \"TV\"}) != null)"
+req "$alice" GET /Kids/Admin/LiveTvChannels
+check "cb a kid cannot list the server's channels" 403
+
+# cc. The list is validated, round-trips, and a PUT without it clears it
+set_alice "{\"LiveTvChannelIds\": [\"$clip_id\"]}"
+check "cc a movie is not a live TV channel" 400 '.errors["LiveTvChannelIds[0]"] == ["Not a live TV channel."]'
+set_alice "{\"LiveTvChannelIds\": [\"$peke\", \"$peke\"]}"
+check "cc a channel listed twice is refused" 400 '.errors["LiveTvChannelIds[1]"] == ["Listed more than once."]'
+set_alice "{\"LiveTvChannelIds\": [\"$peke\"]}"
+check "cc alice gets PekeTV" 200 "[.LiveTvChannelIds[] | gsub(\"-\"; \"\") | ascii_downcase] == [\"$peke\"]"
+set_alice '{}'
+check "cc a PUT without the list clears it" 200 '.LiveTvChannelIds == []'
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "cc a profile always has the list" 200 'has("LiveTvChannelIds")'
+
+# cd. With no channels, alice may not play any (always on, enforcement off)
+live_info "$alice" kids-check-tv "$peke"
+not_allowed "cd alice with no channels is refused PekeTV, with enforcement off"
+set_alice "{\"LiveTvChannelIds\": [\"$peke\"]}"
+
+# ce. Her channel plays: PlaybackInfo opens its live stream
+live_info "$alice" kids-check-tv "$peke"
+check "ce alice's PlaybackInfo for PekeTV has a live stream" 200 '(.MediaSources | length) > 0 and (.MediaSources[0].LiveStreamId | length) > 0'
+peke_live=$(jq -r '.MediaSources[0].LiveStreamId // empty' <<<"$body")
+peke_source=$(jq -r '.MediaSources[0].Id // empty' <<<"$body")
+peke_unique=$(jq -r '.MediaSources[0].Path // empty' <<<"$body" | sed -n 's|.*/LiveTv/LiveStreamFiles/\([^/]*\)/.*|\1|p')
+
+# cf. Another channel is refused, PlaybackInfo and every other route
+live_info "$alice" kids-check-tv "$news"
+not_allowed "cf alice's PlaybackInfo for Grown-ups News is NotAllowed"
+req_hb "$admin" kids-check-admin POST "/Items/$news/PlaybackInfo" '{"AutoOpenLiveStream": true, "EnableDirectStream": true}'
+check "cf admin opens Grown-ups News" 200 '(.MediaSources[0].LiveStreamId | length) > 0'
+news_live=$(jq -r '.MediaSources[0].LiveStreamId // empty' <<<"$body")
+news_unique=$(jq -r '.MediaSources[0].Path // empty' <<<"$body" | sed -n 's|.*/LiveTv/LiveStreamFiles/\([^/]*\)/.*|\1|p')
+# An opened source carries no open token: read it from an answer that does not open the stream
+req_hb "$admin" kids-check-admin POST "/Items/$news/PlaybackInfo" '{"AutoOpenLiveStream": false}'
+news_token=$(jq -r '.MediaSources[0].OpenToken // empty' <<<"$body")
+[[ -n $news_token ]] || echo "  (News has no open token: ${body:0:200})"
+req_hb "$alice" kids-check-tv POST /LiveStreams/Open "{\"OpenToken\": \"$news_token\"}"
+refused "cf alice cannot open News with its open token in the body" liveTvChannel
+req_hb "$alice" kids-check-tv POST "/LiveStreams/Open?openToken=$(jq -rn --arg t "$news_token" '$t | @uri')" '{}'
+refused "cf alice cannot open News with its open token in the query" liveTvChannel
+# A token Jellyfin would read as News whatever its type part says (the review's bypass)
+crafted="${news_token%%_*}_X_${news}_x"
+req_hb "$alice" kids-check-tv POST "/LiveStreams/Open?openToken=$(jq -rn --arg t "$crafted" '$t | @uri')" '{}'
+refused "cf alice cannot open News with a crafted open token" liveTvChannel
+req_h "$alice" kids-check-tv GET "/Videos/$news/master.m3u8?MediaSourceId=$news&LiveStreamId=$news_live"
+refused "cf alice cannot get News' HLS playlist" liveTvChannel
+req_h "$alice" kids-check-tv GET "/Videos/$peke/master.m3u8?MediaSourceId=$peke_source&LiveStreamId=$news_live"
+refused "cf alice cannot pass News' live stream off as PekeTV" liveTvChannel
+if [[ -n $news_unique ]]; then
+  req_h "$alice" kids-check-tv GET "/LiveTv/LiveStreamFiles/$news_unique/stream.ts" 0-1023
+  refused "cf alice cannot read News' shared live stream file" liveTvChannel
+else
+  echo "SKIP cf News is not a shared stream on this server (no LiveStreamFiles path)"
+fi
+req_h "$alice" kids-check-tv GET "/LiveTv/LiveStreamFiles/0123456789abcdef0123456789abcdef/stream.ts" 0-1023
+refused "cf an unknown live stream file is refused to a kid" liveTvChannel
+
+# cg. Her own channel's routes are served
+req_h "$alice" kids-check-tv GET "/Videos/$peke/master.m3u8?MediaSourceId=$peke_source&LiveStreamId=$peke_live"
+check "cg alice gets PekeTV's HLS playlist" 200
+if [[ -n $peke_unique ]]; then
+  status=$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' \
+    "$url/LiveTv/LiveStreamFiles/$peke_unique/stream.ts?ApiKey=$alice") || true
+  check "cg alice reads PekeTV's shared live stream file" 200
+fi
+
+# ch. Administrators and API keys are never refused
+req "$admin" POST "/Auth/Keys?app=kids-check-livetv"
+req "$admin" GET /Auth/Keys
+livetv_key=$(jq -r '[.Items[] | select(.AppName == "kids-check-livetv")][0].AccessToken' <<<"$body")
+req_hb - none POST "/Items/$news/PlaybackInfo?ApiKey=$livetv_key" '{"AutoOpenLiveStream": false}'
+check "ch an API key gets News' media sources" 200 '(.MediaSources | length) > 0'
+req "$admin" DELETE "/Auth/Keys/$livetv_key"
+
+# ci. Live TV access off in Jellyfin wins over the list, at once
+req "$admin" GET "/Users/$alice_id"
+req "$admin" POST "/Users/$alice_id/Policy" "$(jq -c '.Policy | .EnableLiveTvAccess = false' <<<"$body")"
+check "ci admin turns alice's live TV access off" 204
+sleep 1
+req_hb "$alice" kids-check-tv POST "/Items/$peke/PlaybackInfo?UserId=$alice_id" '{}'
+not_allowed "ci with live TV access off, PekeTV is refused"
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Channels"
+check "ci with live TV access off, her channel list is empty" 200 '.Items == [] and .TotalRecordCount == 0'
+restore_alice
+check "ci alice's policy is restored" 204
+sleep 1
+
+# cj. No recordings or timers for kids
+for route in /LiveTv/Recordings /LiveTv/Recordings/Folders /LiveTv/Timers /LiveTv/SeriesTimers; do
+  req_h "$alice" kids-check-tv GET "$route"
+  refused "cj alice is refused $route" liveTvRecording
+done
+# Jellyfin's own LiveTvManagement policy refuses this one before any filter runs (a bare 403)
+req_hb "$alice" kids-check-tv POST /LiveTv/Timers '{}'
+check "cj alice cannot create a timer" 403
+req "$admin" GET /LiveTv/Timers
+check "cj admin still lists timers" 200
+
+# ck. Jellyfin's own lists only show her channel
+req "$alice" GET "/LiveTv/Channels?UserId=$alice_id&Limit=10"
+check "ck LiveTv/Channels shows PekeTV only" 200 "[.Items[].Id | gsub(\"-\"; \"\") | ascii_downcase] == [\"$peke\"] and .TotalRecordCount == 1"
+req "$admin" GET "/LiveTv/Channels"
+check "ck admin still sees both channels" 200 '.TotalRecordCount >= 2'
+req "$alice" GET "/LiveTv/Programs?UserId=$alice_id&Limit=50"
+check "ck LiveTv/Programs shows PekeTV's programs only" 200 \
+  "(.Items | length) > 0 and ([.Items[].ChannelId | gsub(\"-\"; \"\") | ascii_downcase] | unique) == [\"$peke\"]"
+req "$alice" GET "/LiveTv/Programs?UserId=$alice_id&ChannelIds=$news"
+check "ck asking for News' programs gives none" 200 '.Items == []'
+req "$alice" POST /LiveTv/Programs "{\"UserId\": \"$alice_id\", \"ChannelIds\": [\"$news\", \"$peke\"], \"Limit\": 20}"
+check "ck POST LiveTv/Programs is narrowed to PekeTV" 200 \
+  "(.Items | length) > 0 and ([.Items[].ChannelId | gsub(\"-\"; \"\") | ascii_downcase] | unique) == [\"$peke\"]"
+req "$alice" GET "/LiveTv/Programs/Recommended?UserId=$alice_id&IsAiring=true"
+check "ck recommended programs are PekeTV's only" 200 \
+  "([.Items[].ChannelId | gsub(\"-\"; \"\") | ascii_downcase] | unique) | (. == [] or . == [\"$peke\"])"
+req "$alice" GET "/LiveTv/Channels/$news"
+check "ck News' channel page is not found for alice" 404
+req "$alice" GET "/LiveTv/Channels/$peke"
+check "ck PekeTV's channel page works" 200
+req "$admin" GET "/LiveTv/Programs?ChannelIds=$news&Limit=1"
+news_program=$(jq -r '.Items[0].Id // empty' <<<"$body")
+req "$alice" GET "/LiveTv/Programs/$news_program"
+check "ck a News program is not found for alice" 404
+
+# cl. The kid endpoints: her channels with what is on now, and her guide
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Channels"
+check "cl her channels: PekeTV with number, type and the program on now" 200 \
+  "[.Items[] | (.Id | gsub(\"-\"; \"\") | ascii_downcase)] == [\"$peke\"] and .Items[0].ChannelNumber == \"1\"
+   and .Items[0].Type == \"TvChannel\" and (.Items[0].CurrentProgram.Name | startswith(\"Cartoons\"))"
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Programs"
+check "cl her guide: PekeTV's programs in start order, the next 24 h" 200 \
+  "(.Items | length) >= 48 and (.Items | length) <= 50
+   and ([.Items[].ChannelId | gsub(\"-\"; \"\") | ascii_downcase] | unique) == [\"$peke\"]
+   and ([.Items[].StartDate] == ([.Items[].StartDate] | sort))"
+start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+end=$(date -u -d '+2 hours' +%Y-%m-%dT%H:%M:%SZ)
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Programs?startDate=$start&endDate=$end&channelIds=$news,$peke"
+check "cl a 2-hour window gives 4 or 5 of her programs, News ignored" 200 \
+  "(.Items | length) >= 4 and (.Items | length) <= 5 and ([.Items[].ChannelId | gsub(\"-\"; \"\") | ascii_downcase] | unique) == [\"$peke\"]"
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Programs?startDate=$end&endDate=$start"
+check "cl an end before the start is refused" 400 '.errors.endDate != null'
+req "$admin" GET "/Kids/Users/$alice_id/LiveTv/Channels"
+check "cl an admin reads her channels" 200 '.TotalRecordCount == 1'
+bob_live=$(login bob)
+req "$bob_live" GET "/Kids/Users/$alice_id/LiveTv/Channels"
+check "cl bob cannot read alice's channels" 403
+req "$admin" GET /Kids/Users/00000000000000000000000000000001/LiveTv/Channels
+check "cl a user who is not a kid is not found" 404
+
+# cm. Live TV counts as screen time: 60 s of PekeTV counts 60 s
+before=$(used "$alice" "$alice_id")
+play_tv() {
+  local event=$1 path
+  case $event in start) path=/Sessions/Playing ;; progress) path=/Sessions/Playing/Progress ;; stop) path=/Sessions/Playing/Stopped ;; esac
+  req_dev "$alice" kids-check-livetv POST "$path" "$(jq -nc --arg i "$peke" --arg l "$peke_live" \
+    '{ItemId: $i, PlaySessionId: "kids-check-livetv", LiveStreamId: $l, IsPaused: false, CanSeek: false, PlayMethod: "Transcode"}')"
+  [[ $status == 204 ]] || echo "  (live playback $event answered $status ${body:0:200})"
+}
+play_tv start
+for ((i = 0; i < 6; i++)); do sleep 10; play_tv progress; done
+play_tv stop
+sleep 2
+req "$admin" GET /Sessions
+after=$(used "$alice" "$alice_id")
+near $((after - before)) 60 15 "cm 60 s of PekeTV counts as screen time"
+
+# cn. Removing her channel refuses its stream at the next request
+set_alice '{}'
+check "cn admin removes PekeTV from alice" 200 '.LiveTvChannelIds == []'
+sleep 1
+req_h "$alice" kids-check-tv GET "/Videos/$peke/master.m3u8?MediaSourceId=$peke_source&LiveStreamId=$peke_live"
+refused "cn her PekeTV stream is refused once it is removed" liveTvChannel
+
+# Leave alice with no channels, and close the live streams
+for live in "$peke_live" "$news_live"; do
+  [[ -n $live ]] && req "$admin" POST "/LiveStreams/Close?liveStreamId=$(jq -rn --arg l "$live" '$l | @uri')"
+done
+
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
 sleep $((bob_wait + 1))
