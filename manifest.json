@@ -8,6 +8,14 @@
     "category": "Administration",
     "versions": [
       {
+        "version": "0.0.6.0",
+        "changelog": "UPGRADE NOTE: this update cuts every kid's live TV until a parent picks their channels (Dashboard → Kids → the kid → \"Live TV channels\"), even with enforcement off. Live TV for kids: each kid's profile lists the live TV channels they may watch. Always on, whatever EnforcementEnabled says: on every client a kid can only play, list and see the guide of their own channels, and recordings and timers are refused. Live TV counts as screen time like any playback. Kids read their channels and guide from /Kids/Users/{id}/LiveTv/Channels and /LiveTv/Programs (capability liveTv).",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/aldoborrero/jellyfin-kids/releases/download/v0.0.6.0/kids_0.0.6.0.zip",
+        "checksum": "fe5ebef83d76261a389655014ba868a6",
+        "timestamp": "2026-10-21T14:44:57Z"
+      },
+      {
         "version": "0.0.5.1",
         "changelog": "Dashboard controls for enforcement: an \"Enforce on every app\" switch, the break between sittings (1–240 minutes) and the playback-route self-check on the Kids page; the kid editor shows the current sitting and any refusal.",
         "targetAbi": "12.0.0.0",
