@@ -14,7 +14,7 @@ namespace Jellyfin.Plugin.Kids.Storage;
 /// </summary>
 /// <remarks>
 /// Usage only grows: the only write to <c>usage_day.used_ms</c> adds a positive amount. Rows are deleted only by
-/// pruning, a purge or the user being deleted.
+/// pruning, a purge, the user being deleted or a parent's reset of the current day (feature 7).
 /// </remarks>
 public sealed class UsageStore
 {
@@ -195,6 +195,53 @@ public sealed class UsageStore
                 }
 
                 return added;
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Clears a kid's day for a parent's reset (feature 7): deletes the day's usage row and bonus rows in one
+    /// transaction. Reported segment ids are kept, so a segment sent again still adds nothing.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="day">The day, <c>yyyy-MM-dd</c>.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The stored milliseconds and bonus minutes that were cleared; zeros when the day had none.</returns>
+    public Task<(long UsedMs, int BonusMinutes)> ResetDayAsync(Guid userId, string day, CancellationToken cancellationToken = default)
+    {
+        EnsureUsable();
+        return _database.WriteAsync(
+            async (connection, transaction) =>
+            {
+                using var read = connection.CreateCommand();
+                read.Transaction = transaction;
+                read.CommandText = """
+                    SELECT coalesce((SELECT used_ms FROM usage_day WHERE user_id = $id AND day = $day), 0),
+                           coalesce((SELECT sum(minutes) FROM bonus WHERE user_id = $id AND day = $day), 0)
+                    """;
+                read.Parameters.AddWithValue("$id", Key(userId));
+                read.Parameters.AddWithValue("$day", day);
+                long usedMs = 0;
+                int bonusMinutes = 0;
+                using (var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        usedMs = reader.GetInt64(0);
+                        bonusMinutes = reader.GetInt32(1);
+                    }
+                }
+
+                using var delete = connection.CreateCommand();
+                delete.Transaction = transaction;
+                delete.CommandText = """
+                    DELETE FROM usage_day WHERE user_id = $id AND day = $day;
+                    DELETE FROM bonus WHERE user_id = $id AND day = $day;
+                    """;
+                delete.Parameters.AddWithValue("$id", Key(userId));
+                delete.Parameters.AddWithValue("$day", day);
+                await delete.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                return (usedMs, bonusMinutes);
             },
             cancellationToken);
     }

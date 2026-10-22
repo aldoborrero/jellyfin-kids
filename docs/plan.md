@@ -516,6 +516,7 @@ NuGet packages (more detail in §6.4):
 | `GET /Kids/Users/{userId}/Status` | self or admin, IgnoreParentalControl | → `{date, usedSeconds, allowanceSeconds?, bonusSeconds, remainingSeconds?, timeUp, serverTime, nextDayStartsAt, warnAtSeconds:[300,60]}` (feature 3; feature 5 adds `enforced`, `deniedReason?`, `deniedUntil?` and the sitting fields, spec 005 contract). The client polls it about every 60 s, and immediately after a Playstate Stop or a 403 `timeUp` |
 | `POST /Kids/Users/{userId}/WatchTime/Report` | self | `{segments:[{id, startedAt, seconds}]}`, add-only and idempotent by `id`, for offline playback |
 | `POST /Kids/Users/{userId}/WatchTime/Bonus` | admin or grant | `{minutes}` (1–240) → the new Status |
+| `POST /Kids/Users/{userId}/WatchTime/Reset` | admin or grant | no body → the new Status: today's usage and bonus back to 0, the sitting ended, logged (feature 7, spec 007; the one exception to "usage only grows") |
 | `PUT /Kids/Users/{userId}/Schedule` | admin or grant | `{schedules:[{dayOfWeek, startHour, endHour}]}`, written into `UserPolicy.AccessSchedules` |
 | `POST /Kids/Users/{userId}/Policy/Recommended` | admin or grant | `{maxParentalRating, enabledFolders[], hide:bool, dryRun:bool}` → a diff, which is applied unless `dryRun` |
 | `GET /Kids/Admin/Overview` | admin | **Not needed** (feature 3, research R10): the Kids page uses Jellyfin's `GET /Users`, `GET /Kids/Profiles` and one `GET Status` per kid. Kept here only as a possible later addition |
@@ -687,7 +688,9 @@ Verified against the 12.2 sources. Paths are in `.reference/jellyfin`.
 
 Spec numbers follow the order features are built, not this table: spec `004-kids-session-limit` (2026-10-19) adds the
 per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4) becomes spec 005. Spec
-`006-kids-live-tv` (2026-10-20, plugin 0.0.6.0) adds per-kid live TV channels (§3.7), outside this table.
+`006-kids-live-tv` (2026-10-20, plugin 0.0.6.0) adds per-kid live TV channels (§3.7), outside this table. Spec `007-kids-dashboard-ux` (2026-10-22, plugin
+0.0.7.0) makes the dashboard show each kid's protection gaps with Fix links, the enforcement state, explicit "No limit"
+choices and the live TV state, and adds Reset today.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.

@@ -12,20 +12,30 @@
             #KidsPage .kidsUserRow, #KidsPage .kidsLockRow { cursor: default; }
             #KidsPage .kidsUserRow .listItemBody { min-width: 0; }
             #KidsPage .kidsUserName { white-space: normal; overflow-wrap: anywhere; }
+            #KidsPage .kidsUserRow .listItemBodyText.secondary { white-space: normal; overflow-wrap: anywhere; }
             #KidsPage .kidsAvatar { width: 2.86em; height: 2.86em; min-width: 2.86em; min-height: 2.86em; border-radius: 50%; margin: 0.7em 0.29em 0.7em 0.715em; }
             #KidsPage .kidsUserRow > .listItemIcon { margin: 0.5em 0.2em 0.5em 0.5em; }
             #KidsPage .kidsKidCheckbox { width: auto; flex-shrink: 0; margin: 0 0.75em; }
             #KidsPage .kidsEdit { flex-shrink: 0; margin: 0; padding: 0.6em 0.8em; }
             #KidsPage .kidsEdit .material-icons { margin-right: 0.35em; }
-            #KidsPage .kidsWarning { color: var(--jf-palette-warning-main); }
+            #KidsPage .kidsWarning { color: var(--jf-palette-warning-main, #f0ad4e); }
             #KidsPage .kidsWarning .material-icons { font-size: 1.1em; vertical-align: text-bottom; margin-right: 0.2em; }
-            #KidsPage .kidsError, #KidsPage .kidsLockError, #KidsPage .kidsLockMessage.kidsProblem { color: var(--jf-palette-error-main); }
+            #KidsPage .kidsWarning .button-link { margin-left: 0.5em; }
+            #KidsPage .kidsPill { display: inline-block; margin-left: 0.5em; padding: 0 0.5em; border: 1px solid var(--jf-palette-warning-main, #f0ad4e); border-radius: 1em; color: var(--jf-palette-warning-main, #f0ad4e); font-size: 0.85em; line-height: 1.5; white-space: nowrap; }
+            #KidsPage .kidsError, #KidsPage .kidsLockError, #KidsPage .kidsLockMessage.kidsProblem { color: var(--jf-palette-error-main, #cb272a); }
             #KidsPage .kidsLockRow .listItemButton { margin-right: 0.5em; }
             #KidsPage .kidsLockRemoteHelp { display: flex; flex-wrap: wrap; gap: 0.3em 1.5em; margin: -0.8em 0 1.8em; }
             #KidsPage .kidsLockRemoteHelp[hidden] { display: none; }
-            #KidsPage .kidsLockRemoteHelp b { font-weight: 600; color: var(--jf-palette-text-primary); margin-right: 0.3em; }
+            #KidsPage .kidsLockRemoteHelp b { font-weight: 600; color: var(--jf-palette-text-primary, inherit); margin-right: 0.3em; }
             #KidsPage .kidsLockForm { margin-top: 1.5em; }
-            #KidsPage .kidsSittingBreakError, #KidsPage .kidsGate.kidsProblem { color: var(--jf-palette-error-main); }
+            #KidsPage .kidsSittingBreakError, #KidsPage .kidsGate.kidsProblem { color: var(--jf-palette-error-main, #cb272a); }
+            #KidsPage .kidsBanner { padding: 0.75em 1em; margin: 0 0 1.5em; border: 1px solid var(--jf-palette-warning-main, #f0ad4e); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsPage .kidsBanner[hidden], #KidsPage .kidsBannerItem[hidden] { display: none; }
+            #KidsPage .kidsBannerItem { margin: 0.25em 0; }
+            #KidsPage .kidsBannerItem .material-icons { color: var(--jf-palette-warning-main, #f0ad4e); vertical-align: text-bottom; margin-right: 0.3em; }
+            #KidsPage .kidsBannerItem .emby-button { margin: 0.5em 0 0.25em; }
+            #KidsPage .kidsUnsaved { margin: 0 0 0.5em; color: var(--jf-palette-warning-main, #f0ad4e); }
+            #KidsPage .kidsUnsaved[hidden] { display: none; }
             @media all and (max-width: 40em) {
                 #KidsPage .kidsEditLabel { display: none; }
                 #KidsPage .kidsEdit .material-icons { margin-right: 0; }
@@ -45,12 +55,28 @@
                         </p>
                     </div>
 
+                    <div class="kidsBanner" role="status" aria-live="polite" hidden>
+                        <div class="kidsBannerItem kidsBannerEnforcement" hidden>
+                            <p>
+                                <span class="material-icons warning" aria-hidden="true"></span>
+                                <strong>Limits only apply in Wholphin.</strong>
+                                Other apps keep playing when a kid's time is up, the sitting limit is reached or allowed
+                                hours end.
+                            </p>
+                            <button is="emby-button" type="button" class="raised button-submit kidsTurnOn">
+                                <span>Turn on</span>
+                            </button>
+                        </div>
+                        <p class="kidsBannerItem kidsBannerGate" hidden></p>
+                        <p class="kidsBannerItem kidsBannerLiveTv" hidden></p>
+                    </div>
+
                     <div class="verticalSection verticalSection-extrabottompadding kidsUsersSection">
                         <div class="sectionTitleContainer flex align-items-center">
                             <h3 class="sectionTitle">Users</h3>
                         </div>
-                        <p class="fieldDescription">Tick Kid for each child, then open their settings for screen time and the home screen.</p>
-                        <p class="kidsError" style="display: none;"></p>
+                        <p class="fieldDescription">Tick Kid for each child, then open their settings for screen time and the home screen. Each kid shows what still leaves them unprotected, with a link to fix it in Jellyfin.</p>
+                        <p class="kidsError" role="status" aria-live="polite" style="display: none;"></p>
                         <div class="kidsUsers paperList"></div>
                     </div>
 
@@ -59,7 +85,7 @@
                             <h3 class="sectionTitle">Parent lock</h3>
                         </div>
                         <p class="fieldDescription">The code grown-ups enter on a TV to leave kids mode or change its settings.</p>
-                        <p class="kidsLockError" hidden></p>
+                        <p class="kidsLockError" role="status" aria-live="polite" hidden></p>
                         <div class="paperList">
                             <div class="listItem kidsLockRow" data-action="none">
                                 <span class="material-icons listItemIcon kidsLockIcon lock_open" aria-hidden="true"></span>
@@ -78,10 +104,12 @@
                         </div>
                         <form class="kidsLockForm">
                             <div class="selectContainer">
-                                <select is="emby-select" id="kidsLockType" class="kidsLockType" label="Type">
+                                <label class="selectLabel" for="kidsLockType">Type</label>
+                                <select is="emby-select" id="kidsLockType" class="emby-select-withcolor emby-select kidsLockType">
                                     <option value="REMOTE">Remote buttons</option>
                                     <option value="NUMERIC">Digits</option>
                                 </select>
+                                <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
                             </div>
                             <div class="fieldDescription kidsLockRemoteHelp">
                                 <span><b>U D L R</b>arrows</span>
@@ -99,7 +127,7 @@
                                 <input is="emby-input" type="password" id="kidsLockConfirm" class="kidsLockConfirm" label="Repeat the code" autocomplete="off" maxlength="32" />
                                 <div class="fieldDescription">TVs keep a copy to unlock offline.</div>
                             </div>
-                            <p class="kidsLockMessage" hidden></p>
+                            <p class="kidsLockMessage" role="status" aria-live="polite" hidden></p>
                             <button is="emby-button" type="submit" class="raised button-submit block kidsLockSave">
                                 <span>Save code</span>
                             </button>
@@ -112,7 +140,8 @@
                         </div>
                         <form class="kidsScreenTimeForm">
                             <div class="selectContainer">
-                                <select is="emby-select" id="kidsDayStart" class="kidsDayStart" label="Day starts at">
+                                <label class="selectLabel" for="kidsDayStart">Day starts at (server time)</label>
+                                <select is="emby-select" id="kidsDayStart" class="emby-select-withcolor emby-select kidsDayStart">
                                     <option value="0">00:00</option>
                                     <option value="1">01:00</option>
                                     <option value="2">02:00</option>
@@ -138,7 +167,9 @@
                                     <option value="22">22:00</option>
                                     <option value="23">23:00</option>
                                 </select>
+                                <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
                                 <div class="fieldDescription">Each kid's screen time starts again from zero at this hour, server time.</div>
+                                <div class="fieldDescription kidsServerTime" hidden></div>
                             </div>
                             <div class="checkboxContainer checkboxContainer-withDescription">
                                 <label>
@@ -148,16 +179,20 @@
                                 <div class="fieldDescription checkboxFieldDescription">
                                     When a kid's allowance, sitting limit or allowed hours run out, the server warns them,
                                     stops the player and refuses new playback on every app, not only Wholphin, until a
-                                    bonus, a break or the next day. An app that ignores the stop keeps playing what it has
-                                    already downloaded, and DLNA players and offline downloads are out of reach.
+                                    bonus, a break or the next day. Off, the limits only apply in Wholphin.
                                 </div>
-                                <div class="fieldDescription checkboxFieldDescription kidsGate"></div>
+                                <div class="fieldDescription checkboxFieldDescription">
+                                    Out of reach: an app that ignores the stop keeps playing what it has already
+                                    downloaded, and DLNA players and offline downloads are not stopped.
+                                </div>
+                                <div class="fieldDescription checkboxFieldDescription kidsGate" role="status" aria-live="polite"></div>
                             </div>
                             <div class="inputContainer">
                                 <input is="emby-input" type="number" id="kidsSittingBreak" class="kidsSittingBreak" label="Break between sittings (minutes)" min="1" max="240" step="1" />
                                 <div class="fieldDescription">How long a kid must have nothing playing for a new sitting to start, and how long they wait after reaching their sitting limit.</div>
-                                <div class="fieldDescription kidsSittingBreakError" hidden></div>
+                                <div class="fieldDescription kidsSittingBreakError" role="status" aria-live="polite" hidden></div>
                             </div>
+                            <p class="kidsUnsaved kidsScreenTimeUnsaved" role="status" aria-live="polite" hidden>Unsaved changes</p>
                             <button is="emby-button" type="submit" class="raised button-submit block kidsScreenTimeSave">
                                 <span>Save</span>
                             </button>

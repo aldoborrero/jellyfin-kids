@@ -11,8 +11,8 @@
         <style>
             #KidsUserPage .kidsBack { margin: 0 0 0 -0.5em; padding: 0.5em; }
             #KidsUserPage .kidsBack .material-icons { margin-right: 0.35em; }
-            #KidsUserPage .kidsError, #KidsUserPage .kidsFormError, #KidsUserPage .kidsBonusError { color: var(--jf-palette-error-main); }
-            #KidsUserPage .kidsConflict { padding: 0.5em 1em 1em; margin-bottom: 1.5em; border: 1px solid var(--jf-palette-warning-main); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsUserPage .kidsError, #KidsUserPage .kidsFormError, #KidsUserPage .kidsBonusError { color: var(--jf-palette-error-main, #cb272a); }
+            #KidsUserPage .kidsConflict { padding: 0.5em 1em 1em; margin-bottom: 1.5em; border: 1px solid var(--jf-palette-warning-main, #f0ad4e); border-radius: var(--jf-card-borderRadius, 0.2em); }
             #KidsUserPage .kidsConflict[hidden] { display: none; }
             #KidsUserPage .kidsStatus { margin: 0 0 1.5em; }
             #KidsUserPage .kidsStatus p { margin: 0 0 0.3em; }
@@ -26,12 +26,25 @@
             #KidsUserPage .kidsRow > label { flex-grow: 1; width: auto; margin-left: 0.5em; }
             #KidsUserPage .kidsEmpty { padding: 1em; margin: 0; }
             #KidsUserPage .kidsAddPick { margin-top: 1.5em; }
-            #KidsUserPage .kidsNotice { padding: 0.75em 1em; margin: 0 0 1em; border: 1px solid var(--jf-palette-warning-main); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsUserPage .kidsNotice { padding: 0.75em 1em; margin: 0 0 1em; border: 1px solid var(--jf-palette-warning-main, #f0ad4e); border-radius: var(--jf-card-borderRadius, 0.2em); }
             #KidsUserPage .kidsNotice[hidden] { display: none; }
             #KidsUserPage .kidsNotice p { margin: 0.25em 0; }
             #KidsUserPage .kidsChannelLogo { height: 2em; width: 3.5em; object-fit: contain; margin-right: 0.75em; vertical-align: middle; }
             #KidsUserPage .kidsChannelIcon { width: 3.5em; margin-right: 0.75em; text-align: center; vertical-align: middle; }
             #KidsUserPage .kidsChannelNumber { opacity: 0.7; margin-left: 0.5em; }
+            #KidsUserPage .kidsWarning { color: var(--jf-palette-warning-main, #f0ad4e); margin: 0.25em 0; }
+            #KidsUserPage .kidsWarning .material-icons { font-size: 1.1em; vertical-align: text-bottom; margin-right: 0.2em; }
+            #KidsUserPage .kidsWarning .button-link { margin-left: 0.5em; }
+            #KidsUserPage .kidsHealthList { margin: 0 0 1.5em; }
+            #KidsUserPage .kidsHealthList:empty { display: none; }
+            #KidsUserPage .kidsStatusActions { margin: 0.75em 0 0; }
+            #KidsUserPage .kidsStatusActions .emby-button { margin: 0; }
+            #KidsUserPage .kidsLimitBlock { margin-bottom: 1.8em; }
+            #KidsUserPage .kidsLimitBlock .checkboxContainer { margin-bottom: 0.5em; }
+            #KidsUserPage .kidsSchedule { margin: 0 0 0.5em; padding-left: 1.2em; }
+            #KidsUserPage .kidsUnsaved { margin: 0 0 0.5em; color: var(--jf-palette-warning-main, #f0ad4e); }
+            #KidsUserPage .kidsUnsaved[hidden] { display: none; }
+            #KidsUserPage .kidsLiveTvState { margin: 0 0 1em; font-weight: 600; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -46,9 +59,9 @@
                         </div>
                     </div>
 
-                    <p class="kidsMessage" hidden></p>
+                    <p class="kidsMessage" role="status" aria-live="polite" hidden></p>
 
-                    <div class="kidsConflict" hidden>
+                    <div class="kidsConflict" role="status" aria-live="polite" hidden>
                         <p>These settings were changed somewhere else. Nothing was saved.</p>
                         <button is="emby-button" type="button" class="raised kidsReload">
                             <span>Load current settings</span>
@@ -56,26 +69,55 @@
                     </div>
 
                     <form class="kidsUserForm" hidden>
+                        <div class="kidsHealthList" role="status" aria-live="polite"></div>
+
                         <div class="verticalSection verticalSection-extrabottompadding">
                             <div class="sectionTitleContainer flex align-items-center">
                                 <h3 class="sectionTitle">Screen time</h3>
                             </div>
-                            <div class="kidsStatus">
+                            <div class="kidsStatus" role="status" aria-live="polite">
                                 <p class="fieldDescription kidsUsageLine"></p>
                                 <p class="fieldDescription kidsSittingLine" hidden></p>
                                 <p class="fieldDescription kidsDeniedLine" hidden></p>
+                                <p class="fieldDescription kidsWarning kidsAppOnlyLine" hidden>
+                                    App only: limits only apply in Wholphin while enforcement is off.
+                                    <a is="emby-linkbutton" class="button-link" href="#/configurationpage?name=Kids">Turn it on</a>
+                                </p>
+                                <p class="fieldDescription kidsServerTimeLine" hidden></p>
+                                <div class="kidsStatusActions">
+                                    <button is="emby-button" type="button" class="raised button-delete kidsReset">
+                                        <span>Reset today</span>
+                                    </button>
+                                </div>
                             </div>
 
-                            <div class="inputContainer">
-                                <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" label="Daily allowance (minutes)" min="0" max="1440" step="1" placeholder="No limit" />
-                                <div class="fieldDescription">Screen time a day, counted on every client. Leave empty for no limit.</div>
-                                <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes"></div>
+                            <div class="kidsLimitBlock">
+                                <div class="checkboxContainer">
+                                    <label>
+                                        <input is="emby-checkbox" type="checkbox" class="kidsNoAllowance" />
+                                        <span>No daily limit</span>
+                                    </label>
+                                </div>
+                                <div class="inputContainer">
+                                    <input is="emby-input" type="number" id="kidsDailyAllowance" class="kidsDailyAllowance" label="Daily allowance (minutes)" min="0" max="1440" step="1" aria-describedby="kidsDailyAllowanceHelp" />
+                                    <div class="fieldDescription kidsAllowanceHelp" id="kidsDailyAllowanceHelp"></div>
+                                    <div class="fieldDescription kidsError" data-error-for="DailyAllowanceMinutes" role="status" aria-live="polite"></div>
+                                </div>
                             </div>
 
-                            <div class="inputContainer">
-                                <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" label="Session limit (minutes)" min="5" max="120" step="1" placeholder="No limit" />
-                                <div class="fieldDescription">The longest one sitting can last, counted across the kid's devices. Leave empty for no limit.</div>
-                                <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes"></div>
+                            <div class="kidsLimitBlock">
+                                <div class="checkboxContainer">
+                                    <label>
+                                        <input is="emby-checkbox" type="checkbox" class="kidsNoSessionLimit" />
+                                        <span>No sitting limit</span>
+                                    </label>
+                                </div>
+                                <div class="inputContainer">
+                                    <input is="emby-input" type="number" id="kidsSessionLimit" class="kidsSessionLimit" label="Sitting limit (minutes)" min="5" max="120" step="1" aria-describedby="kidsSessionLimitHelp" />
+                                    <div class="fieldDescription" id="kidsSessionLimitHelp">The longest one sitting can last, across the kid's devices. Whichever limit comes first applies: the sitting or the day.</div>
+                                    <div class="fieldDescription kidsBreakLine"></div>
+                                    <div class="fieldDescription kidsError" data-error-for="SessionLimitMinutes" role="status" aria-live="polite"></div>
+                                </div>
                             </div>
 
                             <div class="kidsBonusBlock">
@@ -88,8 +130,17 @@
                                     </button>
                                 </div>
                                 <div class="fieldDescription">Extra minutes on top of today's allowance, added straight away.</div>
-                                <div class="fieldDescription kidsBonusError" hidden></div>
+                                <div class="fieldDescription kidsBonusError" role="status" aria-live="polite" hidden></div>
                             </div>
+                        </div>
+
+                        <div class="verticalSection verticalSection-extrabottompadding">
+                            <div class="sectionTitleContainer flex align-items-center">
+                                <h3 class="sectionTitle">Allowed hours</h3>
+                            </div>
+                            <p class="fieldDescription">Set in Jellyfin, in server time. Outside them the kid can't play on any app.</p>
+                            <ul class="fieldDescription kidsSchedule"></ul>
+                            <a is="emby-linkbutton" class="button-link kidsScheduleLink" href="#">Edit in Jellyfin</a>
                         </div>
 
                         <div class="verticalSection verticalSection-extrabottompadding">
@@ -143,6 +194,7 @@
                             <div class="sectionTitleContainer flex align-items-center">
                                 <h3 class="sectionTitle">Live TV channels</h3>
                             </div>
+                            <p class="kidsLiveTvState" role="status" aria-live="polite"></p>
                             <p class="fieldDescription">The channels this kid may watch, and see in the guide, on every device. Other channels, recordings and timers are never available to kids.</p>
                             <div class="kidsNotice kidsLiveTvNone" role="status" hidden>
                                 <p><strong>No live TV channels allowed.</strong></p>
@@ -158,7 +210,8 @@
                             <div class="fieldDescription kidsError" data-error-for="LiveTvChannelIds"></div>
                         </div>
 
-                        <p class="kidsFormError" hidden></p>
+                        <p class="kidsFormError" role="status" aria-live="polite" hidden></p>
+                        <p class="kidsUnsaved" role="status" aria-live="polite" hidden>Unsaved changes</p>
 
                         <button is="emby-button" type="submit" class="raised button-submit block">
                             <span>Save</span>

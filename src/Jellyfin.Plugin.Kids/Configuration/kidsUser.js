@@ -1,7 +1,9 @@
-// The kid settings editor: the daily screen-time allowance, the session limit and today's bonus minutes; search,
-// autoplay and its limit; home sections (order and visibility); the picked collections and playlists; and the live TV
-// channels the kid may watch. Saves with the loaded revision; a conflict never overwrites. Bonus minutes are added
-// straight away, apart from the save.
+// The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it); today's screen
+// time with the server time and "Reset today"; the daily allowance and the sitting limit, each with an explicit
+// "No limit", and the household break; bonus minutes; the allowed hours from Jellyfin (read-only); search, autoplay
+// and its limit; home sections (order and visibility); the picked collections and playlists; and the live TV channels
+// the kid may watch. Saves with the loaded revision; a conflict never overwrites. Bonus minutes and Reset today apply
+// straight away, apart from the save. Every name is inserted as text; successes are confirmed with a toast.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -35,14 +37,32 @@ function element(tag, className, text) {
     return node;
 }
 
-function iconButton(icon, label, onClick, disabled) {
+function icon(name, className) {
+    const node = element('span', 'material-icons ' + (className ? className + ' ' : '') + name);
+    node.setAttribute('aria-hidden', 'true');
+    return node;
+}
+
+// Jellyfin's dialogs (Dashboard.alert with an object, Dashboard.confirm) put their text in as HTML, so names in it are
+// escaped; toasts use plain text
+function escapeHtml(text) {
+    const escapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
+    return String(text).replace(/[&<>"']/g, (c) => escapes[c]);
+}
+
+function toast(text) {
+    // A string is a toast; an object would be a modal
+    Dashboard.alert(text);
+}
+
+function iconButton(name, label, onClick, disabled) {
     const button = element('button', 'listItemButton paper-icon-button-light');
     button.type = 'button';
     button.setAttribute('is', 'paper-icon-button-light');
     button.title = label;
     button.setAttribute('aria-label', label);
     button.disabled = Boolean(disabled);
-    button.append(element('span', 'material-icons ' + icon));
+    button.append(icon(name));
     button.addEventListener('click', onClick);
     return button;
 }
@@ -59,9 +79,7 @@ function pickTypeName(type) {
 }
 
 function pickIcon(type) {
-    const icon = element('span', 'material-icons listItemIcon ' + (type === 'Playlist' ? 'playlist_play' : 'video_library'));
-    icon.setAttribute('aria-hidden', 'true');
-    return icon;
+    return icon(type === 'Playlist' ? 'playlist_play' : 'video_library', 'listItemIcon');
 }
 
 // A list row that is not itself clickable: its controls are
@@ -71,7 +89,12 @@ function row(className) {
     return item;
 }
 
-// Today's screen time, the sitting and any refusal, from GET Status or the answer to a bonus
+function setLine(node, text) {
+    node.textContent = text || '';
+    node.hidden = !text;
+}
+
+// Shared with kids.js (the two pages are separate modules): wording, health, live TV state and the server clock
 
 function minutes(seconds) {
     return Math.floor(seconds / 60);
@@ -80,7 +103,11 @@ function minutes(seconds) {
 function usageText(status) {
     const used = minutes(status.UsedSeconds);
     if (status.AllowanceSeconds === undefined || status.AllowanceSeconds === null) {
-        return 'Today: ' + used + ' min (no daily limit)';
+        return 'Today: ' + used + ' min · No daily limit';
+    }
+
+    if (status.AllowanceSeconds === 0 && !(status.BonusSeconds > 0)) {
+        return 'Today: ' + used + ' min · No screen time today';
     }
 
     const bonus = status.BonusSeconds > 0 ? ' + ' + minutes(status.BonusSeconds) + ' min bonus' : '';
@@ -108,17 +135,149 @@ const deniedReasons = {
     sessionLimit: 'sitting limit reached'
 };
 
-// Present only while enforcement is on and the kid may not play
-function deniedText(status) {
+// Present only while enforcement is on and the kid may not play; the end is shown on the server's clock
+function deniedText(status, clock) {
     if (!status.DeniedReason) {
         return null;
     }
 
     const reason = deniedReasons[status.DeniedReason] || status.DeniedReason;
-    const until = status.DeniedUntil
-        ? ' until ' + new Date(status.DeniedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '';
+    let until = '';
+    if (status.DeniedUntil) {
+        until = clock
+            ? ' until ' + clock.format(status.DeniedUntil) + ' (server time)'
+            : ' until ' + new Date(status.DeniedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     return 'Playback refused' + until + ': ' + reason + '.';
+}
+
+function userTab(userId, tab) {
+    return '#/dashboard/users/' + userId + '/' + tab;
+}
+
+// What still leaves a kid unprotected in their Jellyfin policy, each with where to fix it (research R2). Null when
+// the policy is unknown: never "no issue" then. In the editor the channel list is on the page, so "none picked" has
+// no link.
+function healthIssues(user, pickedIds, serverChannels) {
+    const policy = user && user.Policy;
+    if (!policy) {
+        return null;
+    }
+
+    const issues = [];
+    if (policy.IsAdministrator) {
+        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', href: userTab(user.Id, 'profile') });
+    }
+
+    if (policy.EnableAllFolders) {
+        issues.push({ text: 'Sees every library', href: userTab(user.Id, 'access') });
+    }
+
+    if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
+        issues.push({ text: 'No maximum parental rating', href: userTab(user.Id, 'parentalcontrol') });
+    }
+
+    const blocked = policy.BlockUnratedItems || [];
+    if (!blocked.includes('Movie') || !blocked.includes('Series')) {
+        issues.push({ text: 'Unrated movies and shows are not blocked', href: userTab(user.Id, 'parentalcontrol') });
+    }
+
+    const picked = (pickedIds || []).length;
+    if (policy.EnableLiveTvAccess === false && picked > 0) {
+        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', href: userTab(user.Id, 'profile') });
+    } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
+        issues.push({ text: 'Live TV access is on but no channels are picked', href: null });
+    }
+
+    if (policy.EnableContentDownloading) {
+        issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
+    }
+
+    return issues;
+}
+
+// "Watches N of M channels" or "No live TV"; without the server's list, "Watches N channels"
+function liveTvText(user, pickedIds, serverChannels) {
+    const ids = pickedIds || [];
+    if (user && user.Policy && user.Policy.EnableLiveTvAccess === false) {
+        return 'No live TV';
+    }
+
+    const count = (n) => n + (n === 1 ? ' channel' : ' channels');
+    if (!serverChannels) {
+        return ids.length === 0 ? 'No live TV' : 'Watches ' + count(ids.length);
+    }
+
+    const known = new Set(serverChannels.map((channel) => channel.Id));
+    const picked = ids.filter((id) => known.has(id)).length;
+    return picked === 0 ? 'No live TV' : 'Watches ' + picked + ' of ' + count(serverChannels.length);
+}
+
+function pad(n) {
+    return String(n).padStart(2, '0');
+}
+
+// The server's clock from a Status: NextDayStartsAt is the day-start hour in the server's zone, which gives its UTC
+// offset (research R5) without an API change. Null without a usable status.
+function serverClock(status, dayStartHour) {
+    const next = status && Date.parse(status.NextDayStartsAt);
+    const now = status && Date.parse(status.ServerTime);
+    if (!Number.isFinite(next) || !Number.isFinite(now) || !Number.isInteger(dayStartHour)) {
+        return null;
+    }
+
+    const nextDate = new Date(next);
+    let offset = (((dayStartHour * 60 - (nextDate.getUTCHours() * 60 + nextDate.getUTCMinutes())) % 1440) + 1440) % 1440;
+    if (offset > 840) {
+        offset -= 1440;
+    }
+
+    const format = (value) => {
+        const shifted = new Date(Date.parse(value) + offset * 60000);
+        return pad(shifted.getUTCHours()) + ':' + pad(shifted.getUTCMinutes());
+    };
+    const size = Math.abs(offset);
+    const label = 'UTC' + (offset < 0 ? '−' : '+') + pad(Math.floor(size / 60)) + ':' + pad(size % 60);
+    return { format, label, now: format(status.ServerTime) };
+}
+
+// Jellyfin's allowed hours (AccessSchedules), read-only: hours are decimal (8.5 is 08:30)
+const scheduleDays = {
+    Everyday: 'Every day',
+    Weekday: 'Weekdays',
+    Weekend: 'Weekends',
+    Sunday: 'Sunday',
+    Monday: 'Monday',
+    Tuesday: 'Tuesday',
+    Wednesday: 'Wednesday',
+    Thursday: 'Thursday',
+    Friday: 'Friday',
+    Saturday: 'Saturday'
+};
+const scheduleDayOrder = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Everyday', 'Weekday', 'Weekend'];
+
+function hourText(hours) {
+    const total = Math.round(Number(hours) * 60);
+    return pad(Math.floor(total / 60)) + ':' + pad(total % 60);
+}
+
+function scheduleText(schedule) {
+    const day = typeof schedule.DayOfWeek === 'number' ? scheduleDayOrder[schedule.DayOfWeek] : schedule.DayOfWeek;
+    return (scheduleDays[day] || String(day)) + ' ' + hourText(schedule.StartHour) + '–' + hourText(schedule.EndHour);
+}
+
+// The plugin id is looked up by name, so this anonymously served file holds no id
+function pluginConfiguration() {
+    return ApiClient.getJSON(ApiClient.getUrl('Plugins'))
+        .then((plugins) => {
+            const plugin = plugins.find((candidate) => candidate.Name === 'Kids');
+            if (!plugin) {
+                throw new Error('The Kids plugin is not listed');
+            }
+
+            return ApiClient.getPluginConfiguration(plugin.Id);
+        });
 }
 
 export default function (view, params) {
@@ -137,6 +296,9 @@ export default function (view, params) {
     let channels = []; // { Id, Name, Number, ImageTag, Type, missing, allowed }
     let conflictProfile = null;
     let searchTimer = null;
+    let user = null;
+    let config = null; // the plugin configuration, for the day start and the break; null when unreadable
+    let snapshot = null; // what Save would send, as loaded or last saved
 
     function showMessage(text) {
         const message = view.querySelector('.kidsMessage');
@@ -185,35 +347,103 @@ export default function (view, params) {
         return Number.isInteger(value) && value >= 1 && value <= 10;
     }
 
-    // A whole-minutes field where empty means no limit: value() is null when empty, the minutes when in range, or
-    // undefined when invalid; render() shows or clears the range message next to it and says whether it is valid
-    function minutesField(selector, field, min, max) {
+    // A whole-minutes limit with an explicit "No limit" checkbox: value() is null when the box is ticked, the minutes
+    // when in range, or undefined when invalid (an empty field included); render() shows or clears the range message
+    // and says whether it is valid
+    function limitField(selector, noLimitSelector, field, min, max, onChange) {
         const input = view.querySelector(selector);
-        const problem = 'Between ' + min + ' and ' + max + ' minutes, or empty for no limit.';
+        const noLimit = view.querySelector(noLimitSelector);
+        const problem = 'Between ' + min + ' and ' + max + ' minutes.';
         const value = () => {
-            const text = input.value.trim();
-            if (text === '') {
+            if (noLimit.checked) {
                 return null;
             }
 
+            const text = input.value.trim();
             const minutes = Number(text);
-            return Number.isInteger(minutes) && minutes >= min && minutes <= max ? minutes : undefined;
+            return text !== '' && Number.isInteger(minutes) && minutes >= min && minutes <= max ? minutes : undefined;
         };
         const render = () => {
+            input.disabled = noLimit.checked;
             // A number input reports bad input (such as "abc") as an empty value with validity.badInput
-            const invalid = input.validity.badInput || value() === undefined;
+            const invalid = !noLimit.checked && (input.validity.badInput || value() === undefined);
             view.querySelector('.kidsError[data-error-for="' + field + '"]').textContent = invalid ? problem : '';
+            input.setAttribute('aria-invalid', String(invalid));
+            if (onChange) {
+                onChange(value());
+            }
+
             return !invalid;
         };
         const load = (minutes) => {
-            input.value = minutes === undefined || minutes === null ? '' : String(minutes);
+            noLimit.checked = minutes === undefined || minutes === null;
+            input.value = noLimit.checked ? '' : String(minutes);
+            input.disabled = noLimit.checked;
+            view.querySelector('.kidsError[data-error-for="' + field + '"]').textContent = '';
+            input.setAttribute('aria-invalid', 'false');
+            if (onChange) {
+                onChange(value());
+            }
         };
         input.addEventListener('input', render);
+        noLimit.addEventListener('change', () => {
+            render();
+            if (!noLimit.checked) {
+                input.focus();
+            }
+        });
         return { value, render, load };
     }
 
-    const allowance = minutesField('.kidsDailyAllowance', 'DailyAllowanceMinutes', 0, 1440);
-    const sessionLimit = minutesField('.kidsSessionLimit', 'SessionLimitMinutes', 5, 120);
+    function renderAllowanceHelp(minutes) {
+        view.querySelector('.kidsAllowanceHelp').textContent = minutes === 0
+            ? '0 minutes: No screen time today.'
+            : 'Screen time a day, counted on every app. 0 means no screen time today.';
+    }
+
+    const allowance = limitField('.kidsDailyAllowance', '.kidsNoAllowance', 'DailyAllowanceMinutes', 0, 1440, renderAllowanceHelp);
+    const sessionLimit = limitField('.kidsSessionLimit', '.kidsNoSessionLimit', 'SessionLimitMinutes', 5, 120);
+
+    // The household break, set on the Kids page: it ends a sitting, and is the wait after the sitting limit
+    function renderBreak() {
+        const line = view.querySelector('.kidsBreakLine');
+        const breakMinutes = Number(config && config.SittingBreakMinutes);
+        const valid = Number.isInteger(breakMinutes) && breakMinutes >= 1 && breakMinutes <= 240;
+        line.replaceChildren(
+            (valid ? 'Break between sittings: ' + breakMinutes + ' min, set for the household on the ' : 'Break between sittings: set for the household on the '));
+        const link = element('a', 'button-link', 'Kids page');
+        link.setAttribute('is', 'emby-linkbutton');
+        link.href = '#/configurationpage?name=Kids';
+        line.append(link, '.');
+    }
+
+    // Unsaved changes: what Save would send, compared with what was loaded or last saved
+    function currentBody() {
+        return {
+            SearchAllowed: view.querySelector('.kidsSearchAllowed').checked,
+            AutoplayEnabled: autoplayInput.checked,
+            AutoplayCap: Number(capInput.value),
+            Sections: sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible })),
+            PickedItemIds: picks.map((pick) => pick.Id),
+            // Always sent: the update is a full replacement, and omitting them would clear them
+            DailyAllowanceMinutes: allowance.value(),
+            SessionLimitMinutes: sessionLimit.value(),
+            LiveTvChannelIds: channels.filter((channel) => channel.allowed).map((channel) => channel.Id)
+        };
+    }
+
+    function isDirty() {
+        return snapshot !== null && !form.hidden && JSON.stringify(currentBody()) !== snapshot;
+    }
+
+    function renderDirty() {
+        view.querySelector('.kidsUnsaved').hidden = !isDirty();
+    }
+
+    function takeSnapshot() {
+        snapshot = JSON.stringify(currentBody());
+        renderDirty();
+    }
 
     function renderCap() {
         capInput.disabled = !autoplayInput.checked;
@@ -232,6 +462,7 @@ export default function (view, params) {
             checkbox.checked = entry.Visible;
             checkbox.addEventListener('change', () => {
                 entry.Visible = checkbox.checked;
+                renderDirty();
             });
             label.append(checkbox, element('span', null, sectionNames[entry.Section] || entry.Section));
             item.append(
@@ -240,10 +471,12 @@ export default function (view, params) {
                 iconButton('arrow_downward', 'Move down', () => { move(sections, index, 1); renderSections(); }, index === sections.length - 1));
             return item;
         }));
+        renderDirty();
     }
 
     function renderPicks() {
         const list = view.querySelector('.kidsPicks');
+        renderDirty();
         if (picks.length === 0) {
             list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Nothing picked yet.'));
             return;
@@ -283,18 +516,19 @@ export default function (view, params) {
             return image;
         }
 
-        const icon = element('span', 'material-icons kidsChannelIcon ' + (channel.Type === 'Radio' ? 'radio' : 'live_tv'));
-        icon.setAttribute('aria-hidden', 'true');
-        return icon;
+        return icon(channel.Type === 'Radio' ? 'radio' : 'live_tv', 'kidsChannelIcon');
     }
 
     function renderLiveTvNotice() {
-        view.querySelector('.kidsLiveTvNone').hidden = channels.some((channel) => channel.allowed);
+        const allowed = channels.filter((channel) => channel.allowed).map((channel) => channel.Id);
+        view.querySelector('.kidsLiveTvNone').hidden = allowed.length > 0;
+        view.querySelector('.kidsLiveTvState').textContent = liveTvText(user, allowed, serverChannels);
     }
 
     function renderChannels() {
         const list = view.querySelector('.kidsChannels');
         renderLiveTvNotice();
+        renderDirty();
         if (serverChannels === null && channels.length === 0) {
             list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Could not load the live TV channels.'));
             return;
@@ -315,6 +549,7 @@ export default function (view, params) {
             checkbox.addEventListener('change', () => {
                 channel.allowed = checkbox.checked;
                 renderLiveTvNotice();
+                renderDirty();
             });
             const text = element('span');
             text.append(channelLogo(channel), channel.missing ? 'Missing (removed from the server)' : channel.Name);
@@ -329,12 +564,40 @@ export default function (view, params) {
     }
 
     // Warnings from the kid's Jellyfin policy: live TV access is all or nothing, and unrated live TV may be blocked
-    function renderLiveTvWarnings(user) {
+    function renderLiveTvWarnings() {
         const policy = (user && user.Policy) || {};
         view.querySelector('.kidsLiveTvAccessOff').hidden = policy.EnableLiveTvAccess !== false;
         const blocked = policy.BlockUnratedItems || [];
         view.querySelector('.kidsLiveTvUnrated').hidden = !blocked.includes('LiveTvChannel') && !blocked.includes('LiveTvProgram');
-        view.querySelector('.kidsUserProfileLink').href = '#/dashboard/users/' + userId + '/profile';
+        view.querySelector('.kidsUserProfileLink').href = userTab(userId, 'profile');
+    }
+
+    // Health lines from the stored channel list, the administrator one first
+    function renderHealth(pickedIds) {
+        const list = view.querySelector('.kidsHealthList');
+        const issues = healthIssues(user, pickedIds, serverChannels) || [];
+        list.replaceChildren(...issues.map((issue) => {
+            const line = element('p', 'kidsWarning');
+            line.append(icon('warning'), issue.text);
+            if (issue.href) {
+                const fix = element('a', 'button-link', 'Fix');
+                fix.setAttribute('is', 'emby-linkbutton');
+                fix.href = issue.href;
+                fix.setAttribute('aria-label', 'Fix: ' + issue.text);
+                line.append(fix);
+            }
+
+            return line;
+        }));
+    }
+
+    function renderSchedule() {
+        const schedules = (user && user.Policy && user.Policy.AccessSchedules) || [];
+        const list = view.querySelector('.kidsSchedule');
+        list.replaceChildren(...(schedules.length === 0
+            ? [element('li', null, 'Any time: no allowed hours are set in Jellyfin.')]
+            : schedules.map((schedule) => element('li', null, scheduleText(schedule)))));
+        view.querySelector('.kidsScheduleLink').href = userTab(userId, 'parentalcontrol');
     }
 
     function renderResults(candidates, term) {
@@ -393,6 +656,8 @@ export default function (view, params) {
         renderSections();
         renderPicks();
         renderChannels();
+        renderHealth(profile.LiveTvChannelIds || []);
+        takeSnapshot();
 
         if (picks.length === 0) {
             return Promise.resolve();
@@ -414,29 +679,30 @@ export default function (view, params) {
     const bonusInput = view.querySelector('.kidsBonusMinutes');
     const bonusAdd = view.querySelector('.kidsBonusAdd');
     const bonusError = view.querySelector('.kidsBonusError');
+    const resetButton = view.querySelector('.kidsReset');
 
     function setBonusError(text) {
         bonusError.textContent = text || '';
         bonusError.hidden = !text;
     }
 
-    function setLine(node, text) {
-        node.textContent = text || '';
-        node.hidden = !text;
-    }
-
     function renderStatus(status) {
+        const clock = serverClock(status, config ? Number(config.DayStartsAtHour) : Number.NaN);
         usageLine.textContent = usageText(status);
         setLine(view.querySelector('.kidsSittingLine'), sittingText(status));
-        setLine(view.querySelector('.kidsDeniedLine'), deniedText(status));
+        setLine(view.querySelector('.kidsDeniedLine'), deniedText(status, clock));
+        view.querySelector('.kidsAppOnlyLine').hidden = status.Enforced !== false;
+        setLine(view.querySelector('.kidsServerTimeLine'), clock ? 'Server time: ' + clock.now + ' (' + clock.label + ').' : null);
     }
 
     function loadUsage() {
         usageLine.textContent = 'Today: …';
         setLine(view.querySelector('.kidsSittingLine'), null);
         setLine(view.querySelector('.kidsDeniedLine'), null);
+        view.querySelector('.kidsAppOnlyLine').hidden = true;
+        setLine(view.querySelector('.kidsServerTimeLine'), null);
         // Never show 0 when the status could not be read
-        request('GET', 'Kids/Users/' + userId + '/Status')
+        return request('GET', 'Kids/Users/' + userId + '/Status')
             .then(renderStatus)
             .catch(() => {
                 usageLine.textContent = 'Usage unavailable';
@@ -456,6 +722,7 @@ export default function (view, params) {
             .then((status) => {
                 bonusInput.value = '';
                 renderStatus(status);
+                toast('Added ' + value + ' min for today');
             })
             .catch((response) => {
                 if (response && response.status === 400 && typeof response.json === 'function') {
@@ -473,19 +740,51 @@ export default function (view, params) {
             });
     }
 
+    function resetToday() {
+        const name = user ? user.Name : 'this kid';
+        Dashboard.confirm({
+            title: 'Reset today',
+            text: 'Set ' + escapeHtml(name) + '\'s screen time and bonus for today back to 0? If they were stopped for time or the sitting limit, they can watch again at once.',
+            confirmText: 'Reset',
+            primary: 'delete'
+        }, '', (confirmed) => {
+            if (!confirmed) {
+                return;
+            }
+
+            resetButton.disabled = true;
+            request('POST', 'Kids/Users/' + userId + '/WatchTime/Reset')
+                .then((status) => {
+                    renderStatus(status);
+                    toast('Today\'s screen time for ' + name + ' was reset');
+                })
+                .catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not reset today\'s screen time.' }))
+                .finally(() => {
+                    resetButton.disabled = false;
+                });
+        });
+    }
+
     function load() {
         Dashboard.showLoadingMsg();
         showMessage(null);
         form.hidden = true;
-        // The channel list is not needed to edit the rest: if it fails, the section says so
+        snapshot = null;
+        // The channel list and the configuration are not needed to edit the rest: if they fail, their lines say less
         const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels').catch(() => null);
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels])
-            .then(([profile, user, serverList]) => {
+        const household = pluginConfiguration().catch(() => null);
+        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household])
+            .then(([profile, loadedUser, serverList, loadedConfig]) => {
+                user = loadedUser;
+                config = loadedConfig;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 serverChannels = serverList;
-                renderLiveTvWarnings(user);
+                renderLiveTvWarnings();
+                renderSchedule();
+                renderBreak();
                 return applyProfile(profile).then(() => {
                     form.hidden = false;
+                    renderDirty();
                     loadUsage();
                     search();
                 });
@@ -511,24 +810,16 @@ export default function (view, params) {
             return false;
         }
 
-        const body = {
-            Revision: revision,
-            SearchAllowed: view.querySelector('.kidsSearchAllowed').checked,
-            AutoplayEnabled: autoplayInput.checked,
-            AutoplayCap: Number(capInput.value),
-            Sections: sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible })),
-            PickedItemIds: picks.map((pick) => pick.Id),
-            // Always sent: the update is a full replacement, and omitting them would clear them
-            DailyAllowanceMinutes: allowance.value(),
-            SessionLimitMinutes: sessionLimit.value(),
-            LiveTvChannelIds: channels.filter((channel) => channel.allowed).map((channel) => channel.Id)
-        };
-
+        const body = Object.assign({ Revision: revision }, currentBody());
         Dashboard.showLoadingMsg();
         request('PUT', 'Kids/Users/' + userId + '/Profile', body)
             .then((profile) => {
                 revision = profile.Revision;
-                Dashboard.alert('Saved');
+                takeSnapshot();
+                renderHealth(profile.LiveTvChannelIds || []);
+                toast('Saved');
+                // The status follows the new allowance and sitting limit
+                return loadUsage();
             })
             .catch((response) => {
                 const status = response && response.status;
@@ -559,7 +850,17 @@ export default function (view, params) {
         return false;
     }
 
+    // Reloading or closing the tab with unsaved changes asks first; Jellyfin's own navigation cannot be held back
+    const onBeforeUnload = (event) => {
+        if (isDirty()) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    };
+
     form.addEventListener('submit', save);
+    form.addEventListener('input', renderDirty);
+    form.addEventListener('change', renderDirty);
     bonusAdd.addEventListener('click', addBonus);
     bonusInput.addEventListener('keydown', (event) => {
         // Enter adds the bonus instead of saving the whole form
@@ -568,6 +869,7 @@ export default function (view, params) {
             addBonus();
         }
     });
+    resetButton.addEventListener('click', resetToday);
     autoplayInput.addEventListener('change', renderCap);
     capInput.addEventListener('input', renderCap);
     searchInput.addEventListener('input', () => {
@@ -580,5 +882,9 @@ export default function (view, params) {
             conflictProfile = null;
         }
     });
-    view.addEventListener('viewshow', load);
+    view.addEventListener('viewshow', () => {
+        window.addEventListener('beforeunload', onBeforeUnload);
+        load();
+    });
+    view.addEventListener('viewhide', () => window.removeEventListener('beforeunload', onBeforeUnload));
 }

@@ -1071,6 +1071,88 @@ for live in "$peke_live" "$news_live"; do
   [[ -n $live ]] && req "$admin" POST "/LiveStreams/Close?liveStreamId=$(jq -rn --arg l "$live" '$l | @uri')"
 done
 
+# Reset today (feature 7, quickstart.md §2 da–dg). Feature 6 left alice with no channels, no allowance and enforcement
+# off; this section turns enforcement on and off again, and purges her screen time at the end
+req - GET /Kids/Info
+check "da Info lists watchTimeReset" 200 '(.Features | index("watchTimeReset")) != null'
+
+# db. Only grown-ups reset a day: not the kid, not another kid, not a grant used from another device
+set_alice '{"DailyAllowanceMinutes": 1}'
+check "db admin sets a 1-minute allowance" 200
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 5}'
+check "db admin adds 5 minutes" 200 '.BonusSeconds >= 300'
+bonus_before=$(jq -r .BonusSeconds <<<"$body")
+req "$alice" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "db alice cannot reset her own day" 403
+req_dev "$bob_t" kids-check-bob POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "db bob cannot reset alice's day" 403
+verify "$alice_a" kids-check-A "$known"
+reset_grant=$(jq -r .Grant <<<"$body")
+req_dev "$alice_b" kids-check-B POST "/Kids/Users/$alice_id/WatchTime/Reset" '' "$reset_grant"
+check "db a grant from alice's TV A is refused on TV B" 403
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+check "db her bonus is untouched" 200 ".BonusSeconds == $bonus_before"
+
+# dc. A user who is not a kid is not found
+req "$admin" POST /Kids/Users/00000000000000000000000000000001/WatchTime/Reset
+check "dc reset of a user who is not a kid is not found" 404
+
+# dd. With time used and enforcement on she is refused; a reset clears used time and bonus and lifts it at once
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "dd admin resets alice's day" 200 '.UsedSeconds == 0 and .BonusSeconds == 0'
+if [[ $(date -d '-1 hour' +%F) == $(date +%F) ]]; then
+  reset_started=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+else
+  reset_started=$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)
+fi
+reset_segment="{\"Segments\":[{\"Id\":\"$(new_id)\",\"StartedAt\":\"$reset_started\",\"Seconds\":120}]}"
+req "$alice" POST "/Kids/Users/$alice_id/WatchTime/Report" "$reset_segment"
+check "dd alice reports 2 minutes" 200 '.UsedSeconds >= 120 and .TimeUp == true'
+configure '.EnforcementEnabled = true'
+playback_info "$alice" kids-check-tv
+check "dd with time up she is NotAllowed" 200 '.ErrorCode == "NotAllowed"'
+log_file=$(ls -t "$dev"/log/log_*.log | head -1)
+reset_lines() { grep -cE "Screen time of .* reset for .* by .?${DEV_ADMIN_USER:-admin}.?: 2 min used and 0 min bonus cleared" "$log_file" || true; }
+lines_before=$(reset_lines)
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "dd the reset answer has nothing used, no bonus and no denial" 200 \
+  '.UsedSeconds == 0 and .BonusSeconds == 0 and .TimeUp == false and .Enforced == true and (has("DeniedReason") | not)'
+playback_info "$alice" kids-check-tv
+check "dd PlaybackInfo has media again at once" 200 '(.MediaSources | length) > 0'
+sleep 1
+near $(($(reset_lines) - lines_before)) 1 0 "dd the reset is logged with who and what"
+
+# df. A segment reported before the reset adds nothing when sent again
+req "$alice" POST "/Kids/Users/$alice_id/WatchTime/Report" "$reset_segment"
+check "df the segment sent again is accepted and adds nothing" 200 '.UsedSeconds == 0'
+
+# de. A grant holder on alice's TV resets her day
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 5}'
+verify "$alice_a" kids-check-A "$known"
+reset_grant=$(jq -r .Grant <<<"$body")
+req_dev "$alice_a" kids-check-A POST "/Kids/Users/$alice_id/WatchTime/Reset" '' "$reset_grant"
+check "de a grant holder on alice's TV resets her day" 200 '.BonusSeconds == 0'
+sleep 1
+if grep -qE "Screen time of .* reset for .* by .?alice with a parent grant.?:" "$log_file"; then
+  echo "PASS de the log says the reset came through a parent grant"
+else
+  echo "FAIL de the log does not name the parent grant"
+  failures=$((failures + 1))
+fi
+
+# dg. An allowance of 0 means no screen time today: a reset clears the day but she stays refused
+set_alice '{"DailyAllowanceMinutes": 0}'
+check "dg admin sets an allowance of 0" 200
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "dg after a reset an allowance of 0 still refuses" 200 '.UsedSeconds == 0 and .DeniedReason == "timeUp"'
+
+# Leave enforcement off and alice with no allowance and no screen time, as bj did
+configure '.EnforcementEnabled = false'
+req "$admin" DELETE "/Kids/Users/$alice_id/Profile?purge=true"
+check "dg admin unmarks alice with purge" 204
+req "$admin" PUT "/Kids/Users/$alice_id/Profile" '{"Revision":0}'
+check "dg admin marks alice again" 200
+
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
 sleep $((bob_wait + 1))

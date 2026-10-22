@@ -1,15 +1,14 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 1.0.1 (PATCH: wording clarification)
-- Modified principles: V. A Stable, Client-Agnostic Contract (title unchanged). "Clients without the plugin keep
-  working in their own local mode." becomes "Clients MUST keep working without kids features when the plugin is
-  absent." Reason: Wholphin decided that kids mode exists only with the plugin, so there is no client-side local kids
-  mode to keep; what stays required is that a client still works as a normal Jellyfin client on a server without it.
+- Version change: 1.0.1 → 1.0.2 (PATCH: wording clarification)
+- Modified principles: II. The Server Decides (title unchanged). "Client reports may only add usage, never remove it."
+  gains "The only way to lower a day's usage is a parent's explicit Reset (admin, API key or parent grant), which is
+  logged." Reason: feature 7 "Reset today" (user decision 2026-10-20), which reverses feature 3's add-only
+  clarification Q5 for one explicit parent action; client reports stay add-only.
 - Added sections: none
 - Removed sections: none
 - Templates: plan/spec/tasks templates read this file at runtime; no template edits required
-- Follow-up: docs/plan.md §1 and §4.1 updated to drop "local mode" (feature 4); the specs of features 1–3 keep their
-  historical wording
+- Follow-up: feature 3's contract and data model carry an amendment note (feature 7)
 - Deferred TODOs: none
 -->
 # Jellyfin Kids Constitution
@@ -35,7 +34,8 @@ Rationale: native restrictions already apply to every client; a parallel copy wo
   new playback when time is up.
 - A kid's own token MUST never be enough to change kids settings, the parent lock or screen time,
   including its own. Changes require an admin (or API key) or a short-lived parent grant.
-- Client reports may only add usage, never remove it.
+- Client reports may only add usage, never remove it. The only way to lower a day's usage is a parent's
+  explicit Reset (admin, API key or parent grant), which is logged.
 - Where the server cannot enforce something (for example a direct-play stream already in
   progress), the limit MUST be documented and mitigated, not hidden.
 
@@ -118,4 +118,4 @@ This constitution supersedes other practices for this repository. Amendments are
 removing or redefining a principle, MINOR for a new principle or materially expanded guidance,
 PATCH for clarifications. Reviews of plans and changes verify compliance with the principles above.
 
-**Version**: 1.0.1 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-19
+**Version**: 1.0.2 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-22

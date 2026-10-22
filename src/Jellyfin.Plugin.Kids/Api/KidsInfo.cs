@@ -17,5 +17,5 @@ public record KidsInfo(string PluginVersion, int ApiVersion, IReadOnlyList<strin
     /// Gets the capabilities of this plugin version, in the order they were added. Null fields are omitted from
     /// answers, so clients rely on these names (for example <c>sessionLimit</c>) to know a field is supported.
     /// </summary>
-    public static IReadOnlyList<string> SupportedFeatures { get; } = ["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv"];
+    public static IReadOnlyList<string> SupportedFeatures { get; } = ["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset"];
 }

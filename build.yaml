@@ -1,7 +1,7 @@
 ---
 name: "Kids"
 guid: "d62ee188-270c-49d8-b7b9-5e524fec2335"
-version: "0.0.6.0"
+version: "0.0.7.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Parent-controlled kids profiles"
@@ -13,9 +13,14 @@ owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"
 changelog: >
-  UPGRADE NOTE: this update cuts every kid's live TV until a parent picks their channels (Dashboard → Kids → the
-  kid → "Live TV channels"), even with enforcement off.
-  Live TV for kids: each kid's profile lists the live TV channels they may watch. Always on, whatever
-  EnforcementEnabled says: on every client a kid can only play, list and see the guide of their own channels, and
-  recordings and timers are refused. Live TV counts as screen time like any playback. Kids read their channels and
-  guide from /Kids/Users/{id}/LiveTv/Channels and /LiveTv/Programs (capability liveTv).
+  Kids dashboard: each kid row says what still leaves the kid unprotected (an administrator account, every
+  library, no maximum rating, unrated movies and shows, live TV access out of step with the picked channels,
+  downloads), each with a Fix link to the right tab of Jellyfin's user editor. A banner at the top says when limits
+  only apply in Wholphin (enforcement off, with a Turn on button) or when routes cannot be guarded, and kid rows show
+  an "App only" pill meanwhile. The daily allowance and the sitting limit get explicit "No limit" choices, and an
+  allowance of 0 reads "No screen time today". Rows and the editor show "Watches N of M channels" or "No live TV",
+  the server time with its UTC offset, the household break next to the sitting limit and the kid's allowed hours.
+  Every save confirms with a toast, and forms say when they have unsaved changes.
+  Reset today: POST /Kids/Users/{id}/WatchTime/Reset (administrator or parent grant) sets the kid's used time and
+  bonus for today back to 0 and lifts a stop for time or the sitting limit at once; it is logged (capability
+  watchTimeReset). The kid editor has a Reset today button.

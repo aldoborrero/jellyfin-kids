@@ -98,6 +98,21 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     }
 
     /// <summary>
+    /// Ends a kid's current sitting and its break, for a parent's reset (feature 7).
+    /// </summary>
+    /// <param name="kid">The kid.</param>
+    public void ResetSitting(Guid kid)
+    {
+        lock (_lock)
+        {
+            if (_kids.TryGetValue(kid, out var state))
+            {
+                state.Sitting.Reset();
+            }
+        }
+    }
+
+    /// <summary>
     /// Forgets a kid who is no longer one.
     /// </summary>
     /// <param name="kid">The user.</param>
