@@ -92,7 +92,9 @@ server through Jellyfin's playstate API; the server does not cross-check (clarif
 - **Concurrent sessions**: they add up.
 - **Day boundaries**: the day runs from the household's "day starts at" hour (server local time, default midnight).
   Playback across the boundary is split between the two days.
-- **Usage only grows**. Parents give time back with bonus minutes (clarification Q5).
+- **Usage only grows**. Parents give time back with bonus minutes (clarification Q5). *Amended by feature 7*: a
+  parent (administrator, API key or grant) may also reset the current day with `POST WatchTime/Reset`, which is
+  logged ([contract](../../007-kids-dashboard-ux/contracts/kids-api-v1-reset.md)); client reports stay add-only.
 - **Changing "day starts at" mid-day** (known behaviour, accepted): days are labelled by the date they start on, and
   recorded days are not recalculated. Moving the hour later than the current time makes today's `Date` step back to
   the previous day's label until the new hour, and the time counted meanwhile goes to that day. From the new hour,

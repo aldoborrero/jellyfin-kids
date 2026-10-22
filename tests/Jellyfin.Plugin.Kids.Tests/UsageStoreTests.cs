@@ -232,4 +232,46 @@ public sealed class UsageStoreTests : IDisposable
         command.CommandText = sql;
         command.ExecuteNonQuery();
     }
+
+    // Reset today (feature 7)
+    [Fact]
+    public async Task ResetDay_ClearsTheDaysUsageAndBonus_AndSaysWhat()
+    {
+        await _store.AddUsageAsync(Amounts((_alice, "2026-10-18", 90_000), (_alice, "2026-10-17", 60_000), (_bob, "2026-10-18", 30_000)));
+        await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+        await _store.AddBonusAsync(_alice, "2026-10-18", 5, "admin", _now);
+        await _store.AddBonusAsync(_alice, "2026-10-17", 30, "admin", _now);
+
+        var cleared = await _store.ResetDayAsync(_alice, "2026-10-18");
+
+        Assert.Equal((90_000L, 20), cleared);
+        Assert.Equal(0, await _store.GetUsedMsAsync(_alice, "2026-10-18"));
+        Assert.Equal(0, await _store.GetBonusMinutesAsync(_alice, "2026-10-18"));
+        Assert.Equal(60_000, await _store.GetUsedMsAsync(_alice, "2026-10-17"));
+        Assert.Equal(30, await _store.GetBonusMinutesAsync(_alice, "2026-10-17"));
+        Assert.Equal(30_000, await _store.GetUsedMsAsync(_bob, "2026-10-18"));
+    }
+
+    [Fact]
+    public async Task ResetDay_OfAnEmptyDay_ClearsNothing()
+    {
+        Assert.Equal((0L, 0), await _store.ResetDayAsync(_alice, "2026-10-18"));
+    }
+
+    [Fact]
+    public async Task ResetDay_KeepsReportedSegmentIds_SoARepeatAddsNothing()
+    {
+        var segments = new List<(string Id, string Day, DateTimeOffset StartedAt, int Seconds)> { ("a", "2026-10-18", _now.AddHours(-1), 120) };
+        await _store.AddSegmentsAsync(_alice, segments, _now);
+
+        await _store.ResetDayAsync(_alice, "2026-10-18");
+
+        Assert.Equal(1, Count("reported_segment", _alice));
+        Assert.Equal(0, await _store.AddSegmentsAsync(_alice, segments, _now));
+        Assert.Equal(0, await _store.GetUsedMsAsync(_alice, "2026-10-18"));
+
+        // Time counted after the reset starts the day again
+        await _store.AddUsageAsync(Amounts((_alice, "2026-10-18", 1000)));
+        Assert.Equal(1000, await _store.GetUsedMsAsync(_alice, "2026-10-18"));
+    }
 }

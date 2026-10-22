@@ -269,4 +269,25 @@ public class EnforcementStateTests
         user.SetPermission(PermissionKind.EnableLiveTvAccess, liveTvAccess);
         return user;
     }
+
+    [Fact]
+    public void ResetSitting_LiftsTheSittingLimitAtOnce()
+    {
+        _settings.SittingBreak = TimeSpan.FromMinutes(15);
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), 30, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(30));
+        Assert.Equal(DenialReason.SessionLimit, _state.Evaluate(Kid, Now.AddMinutes(30))!.Reason);
+
+        _state.ResetSitting(Kid);
+
+        Assert.Null(_state.Evaluate(Kid, Now.AddMinutes(30)));
+        Assert.Equal(0, _state.Describe(Kid, Now.AddMinutes(30)).Sitting!.UsedMs);
+    }
+
+    [Fact]
+    public void ResetSitting_OfAnUnknownKid_DoesNothing()
+    {
+        _state.ResetSitting(Guid.NewGuid());
+        Assert.Empty(_state.LoadedKids());
+    }
 }

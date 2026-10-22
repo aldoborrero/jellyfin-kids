@@ -20,7 +20,7 @@ PUT is a full replacement, so omitting the field clears it.
 |---|---|---|
 | `user_id` | text (Guid "N") | A kid, or a former kid when unmarked without purge |
 | `day` | text `yyyy-MM-dd` | The day under the "day starts at" rule (DayClock) |
-| `used_ms` | integer ≥ 0 | **Only ever increased** (FR-012a, FR-018): `used_ms = used_ms + delta` with `delta > 0` |
+| `used_ms` | integer ≥ 0 | **Only ever increased** (FR-012a, FR-018): `used_ms = used_ms + delta` with `delta > 0`. *Feature 7*: a parent's Reset today deletes the current day's row (and its bonus rows); see [spec 007](../007-kids-dashboard-ux/data-model.md) |
 
 Primary key `(user_id, day)`. Rows are removed only by the retention task (older than 90 days), a purge, or the user
 being deleted.

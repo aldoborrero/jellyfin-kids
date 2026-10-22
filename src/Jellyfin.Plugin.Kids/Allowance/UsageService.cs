@@ -258,6 +258,45 @@ public sealed class UsageService : IDisposable
     }
 
     /// <summary>
+    /// Sets a kid's used time and bonus for the current day back to 0 (feature 7). Serialised with flushes, so a flush
+    /// in progress cannot write the cleared time back. Access rules are the caller's job.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>What was cleared and the new status, or null if the user is not a kid.</returns>
+    public async Task<DayReset?> ResetDayAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _profiles.GetAsync(userId, cancellationToken).ConfigureAwait(false);
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var day = DayClock.Format(CurrentDayClock().DayOf(_time.GetUtcNow()));
+        long usedMs;
+        int bonusMinutes;
+        await _flushLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // The store first: if it fails, the pending time is still there and nothing was reset
+            (usedMs, bonusMinutes) = await _store.ResetDayAsync(userId, day, cancellationToken).ConfigureAwait(false);
+            lock (_pendingLock)
+            {
+                usedMs += _pending.GetValueOrDefault((userId, day));
+                _pending.Remove((userId, day));
+            }
+        }
+        finally
+        {
+            _flushLock.Release();
+        }
+
+        UsageChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
+        var status = await StatusAsync(userId, profile.Settings.DailyAllowanceMinutes, cancellationToken).ConfigureAwait(false);
+        return new DayReset(day, usedMs, bonusMinutes, status);
+    }
+
+    /// <summary>
     /// Adds offline segments a kid reported, each to the day it started in. Access rules are the caller's job.
     /// </summary>
     /// <param name="userId">The kid.</param>

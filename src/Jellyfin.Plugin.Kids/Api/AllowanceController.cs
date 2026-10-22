@@ -123,6 +123,49 @@ public class AllowanceController : ControllerBase
     }
 
     /// <summary>
+    /// Sets a kid's used time and bonus for the current day back to 0 and ends the current sitting and its break
+    /// (feature 7), so a stop for time or the sitting limit is lifted at once. Logged.
+    /// </summary>
+    /// <param name="userId">The kid's user id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">The kid's new status.</response>
+    /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
+    /// <response code="404">The user is not a kid.</response>
+    /// <returns>The new status, or a refusal.</returns>
+    [HttpPost("WatchTime/Reset")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<KidStatusDto>> PostReset([FromRoute] Guid userId, CancellationToken cancellationToken)
+    {
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        if (!ProfileAccess.CanMutate(caller))
+        {
+            return Forbid();
+        }
+
+        var reset = await _usage.ResetDayAsync(userId, cancellationToken).ConfigureAwait(false);
+        if (reset is null)
+        {
+            return NotAKid();
+        }
+
+        _enforcement.ResetSitting(userId);
+        _logger.LogInformation(
+            "Screen time of {UserId} reset for {Day} by {Caller}: {UsedMinutes} min used and {BonusMinutes} min bonus cleared",
+            userId,
+            reset.Day,
+            caller.IsAdmin ? caller.LogName : caller.LogName + " with a parent grant",
+            reset.UsedMs / 60_000,
+            reset.BonusMinutes);
+
+        // Reload before answering, so the next request already follows the reset
+        await _enforcementLoader.TryLoadAsync(userId).ConfigureAwait(false);
+        return KidStatusDto.From(reset.Status, _enforcement.Describe(userId, _time.GetUtcNow()));
+    }
+
+    /// <summary>
     /// Reports playback the server did not see (offline downloads). Only adds time; a repeated segment id is ignored.
     /// </summary>
     /// <param name="userId">The kid's user id; must be the caller.</param>

@@ -49,6 +49,18 @@ public sealed class Sitting
     }
 
     /// <summary>
+    /// Forgets the sitting, for a parent's reset (feature 7): no playing time and no break; the next counted interval
+    /// starts a new sitting.
+    /// </summary>
+    public void Reset()
+    {
+        _played = false;
+        UsedMs = 0;
+        StartedAt = default;
+        LastPlayedAt = default;
+    }
+
+    /// <summary>
     /// Reads the sitting at a moment: after a break with nothing played, it is a new, empty sitting.
     /// </summary>
     /// <param name="now">The current time.</param>

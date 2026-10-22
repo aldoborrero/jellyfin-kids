@@ -397,4 +397,80 @@ public sealed class UsageServiceTests : IDisposable
         command.CommandText = sql;
         command.ExecuteNonQuery();
     }
+
+    // Reset today (feature 7)
+    [Fact]
+    public async Task ResetDay_ClearsStoredAndPendingTimeAndTheBonus()
+    {
+        await MarkAsync(_alice, 30);
+        await _store.AddUsageAsync(new Dictionary<(Guid UserId, string Day), long> { [(_alice, Today)] = 1_800_000 });
+        await _service.AddBonusAsync(_admin, _alice, 10, TestContext.Current.CancellationToken);
+        _service.AddPlayed(_alice, _time.Now.AddSeconds(-30), _time.Now);
+        var changed = new List<Guid>();
+        _service.UsageChanged += (_, e) => changed.Add(e.Argument);
+
+        var reset = await _service.ResetDayAsync(_alice, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(reset);
+        Assert.Equal(Today, reset.Day);
+        Assert.Equal(1_830_000, reset.UsedMs);
+        Assert.Equal(10, reset.BonusMinutes);
+        Assert.Equal(0, reset.Status.UsedSeconds);
+        Assert.Equal(0, reset.Status.BonusSeconds);
+        Assert.False(reset.Status.TimeUp);
+        Assert.Equal(1800, reset.Status.RemainingSeconds);
+        Assert.Equal([_alice], changed);
+
+        // Nothing pending is left for a flush to write back
+        Assert.True(await _service.FlushAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(0, (await StatusAsync(_alice)).UsedSeconds);
+    }
+
+    [Fact]
+    public async Task ResetDay_KeepsOtherDaysAndOtherKids()
+    {
+        await MarkAsync(_alice);
+        await MarkAsync(_bob);
+        await _store.AddUsageAsync(new Dictionary<(Guid UserId, string Day), long>
+        {
+            [(_alice, "2026-10-17")] = 600_000,
+            [(_bob, Today)] = 120_000,
+        });
+        _service.AddPlayed(_bob, _time.Now.AddSeconds(-30), _time.Now);
+
+        await _service.ResetDayAsync(_alice, TestContext.Current.CancellationToken);
+
+        Assert.Equal(600_000, await _store.GetUsedMsAsync(_alice, "2026-10-17"));
+        Assert.Equal(150, (await StatusAsync(_bob)).UsedSeconds);
+    }
+
+    [Fact]
+    public async Task ResetDay_NotAKid_IsNull()
+    {
+        Assert.Null(await _service.ResetDayAsync(_alice, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ResetDay_AllowanceOfZero_StaysTimeUp()
+    {
+        await MarkAsync(_alice, 0);
+
+        var reset = await _service.ResetDayAsync(_alice, TestContext.Current.CancellationToken);
+
+        Assert.True(reset!.Status.TimeUp);
+    }
+
+    [Fact]
+    public async Task ResetDay_StoreFailure_KeepsEverything()
+    {
+        await MarkAsync(_alice, 30);
+        await _store.AddUsageAsync(new Dictionary<(Guid UserId, string Day), long> { [(_alice, Today)] = 600_000 });
+        _service.AddPlayed(_alice, _time.Now.AddSeconds(-30), _time.Now);
+        Execute("CREATE TRIGGER fail_reset BEFORE DELETE ON usage_day BEGIN SELECT RAISE(ABORT, 'test'); END");
+
+        await Assert.ThrowsAnyAsync<Exception>(() => _service.ResetDayAsync(_alice, TestContext.Current.CancellationToken));
+
+        Assert.Equal(630, (await StatusAsync(_alice)).UsedSeconds);
+        Assert.Equal(1, _service.PendingCount);
+    }
 }

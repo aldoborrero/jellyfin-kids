@@ -11,7 +11,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![MIT license](https://img.shields.io/badge/license-MIT-f4c430?style=flat-square)](LICENSE)
 
-[Install](#install) · [What it does](#what-it-does) · [How it works](#how-it-works) · [Clients](#clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
+[Install](#install) · [What it does](#what-it-does) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Clients](#clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
 
 <code>https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json</code>
 
@@ -55,13 +55,36 @@ and for installing a release by hand.
 |---|---|
 | **Kid profiles** | Mark any Jellyfin user as a kid, with their own home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
-| **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today. |
+| **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today, or reset today back to zero (logged). |
 | **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only Wholphin. Off until you turn it on; see [Enforcement](#enforcement). |
 | **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
-| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. |
+| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. Each kid shows what still leaves them unprotected in Jellyfin (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, downloads) with a link to fix it, and a banner says when limits only apply in Wholphin. |
 | **Cleanup** | A deleted user's kid profile and usage go with them, and usage older than 90 days is pruned daily. |
+
+## Screenshots
+
+The Kids dashboard pages in Jellyfin 12.2 (development server, with sample kids).
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/assets/screenshots/kids-page-dark.png"><img src="docs/assets/screenshots/kids-page-dark.png" alt="Kids page in the dark theme: users with their kid status, today's screen time and health warnings with Fix links, the enforcement banner, the parent lock and the screen time settings"></a></td>
+    <td width="50%"><a href="docs/assets/screenshots/kid-editor-dark.png"><img src="docs/assets/screenshots/kid-editor-dark.png" alt="Kid editor in the dark theme: health warnings, screen time with Reset today, daily allowance, sitting limit and bonus, allowed hours, browsing, home sections, picks and live TV channels"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Kids page</b>: who is a kid, today's screen time, what still leaves each kid unprotected, with Fix links, the parent lock and household settings.</td>
+    <td align="center"><b>Kid editor</b>: screen time, sitting limit, bonus and Reset today, allowed hours, home sections, picks and live TV channels.</td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/assets/screenshots/kids-page-light.png"><img src="docs/assets/screenshots/kids-page-light.png" alt="Kids page in the light theme"></a></td>
+    <td width="50%" align="center"><a href="docs/assets/screenshots/kids-page-mobile.png"><img src="docs/assets/screenshots/kids-page-mobile.png" alt="Kids page on a narrow phone screen" width="200"></a></td>
+  </tr>
+  <tr>
+    <td align="center">Light theme</td>
+    <td align="center">On a phone</td>
+  </tr>
+</table>
 
 ## Enforcement
 
@@ -86,7 +109,7 @@ With enforcement on, for kids only:
   server stops it again, at most every 10 seconds.
 - New playback is refused: jellyfin-web shows "Playback of this media is not allowed", other routes answer 403 with
   `X-Application-Error-Code: PlaybackNotAllowed`. Browsing, search and the rest of Jellyfin keep working.
-- A bonus, the end of the break or the next day lifts it at once.
+- A bonus, Reset today, the end of the break or the next day lifts it at once.
 
 Limits: an app that ignores the stop keeps playing what it has already downloaded (about 35 seconds for a browser in
 our tests). A stream address with no token and no device id can't be tied to a kid, and DLNA renderers and offline
@@ -146,6 +169,7 @@ The client API lives under `/Kids` and is versioned (`ApiVersion` in `GET /Kids/
 - [Session limit](specs/004-kids-session-limit/contracts/kids-api-v1-session-limit.md)
 - [Enforcement and the sitting](specs/005-kids-enforcement/contracts/kids-api-v1-enforcement.md)
 - [Live TV](specs/006-kids-live-tv/contracts/kids-api-v1-live-tv.md)
+- [Reset today](specs/007-kids-dashboard-ux/contracts/kids-api-v1-reset.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 
@@ -195,6 +219,7 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 - [x] Per-kid sitting limit
 - [x] Stop playback when time is up, on every client (opt-in)
 - [x] Live TV channels per kid, with their guide
+- [x] A dashboard that shows each kid's protection gaps, and Reset today
 - [ ] Recommended restrictions in one step, an allowed-hours editor, and picks backed by Jellyfin collections
 - [ ] Per-kid codes, viewing history, and export and import of plugin data
 

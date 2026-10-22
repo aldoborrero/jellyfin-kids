@@ -8,9 +8,9 @@ namespace Jellyfin.Plugin.Kids.Tests;
 public class KidsInfoTests
 {
     [Fact]
-    public void SupportedFeatures_AddLiveTvAfterTheEarlierOnes()
+    public void SupportedFeatures_AddWatchTimeResetAfterTheEarlierOnes()
     {
-        Assert.Equal(["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv"], KidsInfo.SupportedFeatures);
+        Assert.Equal(["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset"], KidsInfo.SupportedFeatures);
     }
 
     [Fact]

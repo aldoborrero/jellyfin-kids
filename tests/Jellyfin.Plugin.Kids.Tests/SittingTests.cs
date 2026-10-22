@@ -98,4 +98,24 @@ public class SittingTests
         Assert.Null(state.RemainingMs);
         Assert.Null(state.BreakEndsAt);
     }
+
+    [Fact]
+    public void Reset_ForgetsTheSittingAndItsBreak()
+    {
+        var sitting = new Sitting();
+        sitting.Add(T0, T0.AddMinutes(30), Break);
+        Assert.NotNull(sitting.Read(T0.AddMinutes(30), Limit, Break).BreakEndsAt);
+
+        sitting.Reset();
+
+        var state = sitting.Read(T0.AddMinutes(30), Limit, Break);
+        Assert.Equal(0, state.UsedMs);
+        Assert.Null(state.BreakEndsAt);
+        Assert.Null(state.StartedAt);
+
+        // The next interval starts a new sitting
+        sitting.Add(T0.AddMinutes(31), T0.AddMinutes(36), Break);
+        Assert.Equal(5 * 60_000, sitting.Read(T0.AddMinutes(36), Limit, Break).UsedMs);
+        Assert.Equal(T0.AddMinutes(31), sitting.Read(T0.AddMinutes(36), Limit, Break).StartedAt);
+    }
 }
