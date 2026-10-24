@@ -63,6 +63,13 @@ public class KidProfileUpdate
     public IReadOnlyList<Guid>? LiveTvChannelIds { get; init; }
 
     /// <summary>
+    /// Gets the avatar id: <c>leo</c>, <c>max</c>, <c>nico</c>, <c>lucy</c>, <c>sara</c> or <c>mia</c>, in any case;
+    /// null, omitted or blank means none (the Jellyfin profile image). Like the limits, omitting it clears it: send it
+    /// on every update.
+    /// </summary>
+    public string? Avatar { get; init; }
+
+    /// <summary>
     /// Maps the body to the validator's input.
     /// </summary>
     /// <returns>The input.</returns>
@@ -75,6 +82,7 @@ public class KidProfileUpdate
         PickedItemIds = PickedItemIds,
         DailyAllowanceMinutes = DailyAllowanceMinutes,
         SessionLimitMinutes = SessionLimitMinutes,
-        LiveTvChannelIds = LiveTvChannelIds
+        LiveTvChannelIds = LiveTvChannelIds,
+        Avatar = Avatar
     };
 }

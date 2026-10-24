@@ -1153,6 +1153,67 @@ check "dg admin unmarks alice with purge" 204
 req "$admin" PUT "/Kids/Users/$alice_id/Profile" '{"Revision":0}'
 check "dg admin marks alice again" 200
 
+# Avatars and hidden channels (feature 12, quickstart.md §2 ea–eh). dg left alice marked again with default settings.
+
+# ea. Info reports API 1.1 and the avatar capability
+req - GET /Kids/Info
+check "ea Info is API 1.1 with avatars" 200 \
+  '.ApiVersion == 1 and .ApiMinorVersion == 1 and (.Features | index("avatar")) != null'
+
+# eb. A grown-up sets the avatar, in any case; the kid reads it, and so does the list of kids
+set_alice '{"Avatar": " Lucy "}'
+check "eb admin sets alice's avatar" 200 '.Avatar == "lucy"'
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "eb alice reads her avatar" 200 '.Avatar == "lucy"'
+req "$alice" GET /Kids/Profiles
+check "eb the list of kids carries it" 200 \
+  "any(.[]; (.UserId | gsub(\"-\"; \"\") | ascii_downcase) == \"$alice_id\" and .Avatar == \"lucy\")"
+
+# ec. The kid's own token cannot change it
+req "$alice" PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\": $(alice_rev), \"Avatar\": \"mia\"}"
+check "ec alice cannot change her avatar" 403
+req "$admin" GET "/Kids/Users/$alice_id/Profile"
+check "ec alice's avatar is unchanged" 200 '.Avatar == "lucy"'
+
+# ed. Only the six ids are accepted
+set_alice '{"Avatar": "bluey"}'
+check "ed an unknown avatar is rejected" 400 "$errors | has(\"Avatar\")"
+
+# ee. An update without it clears it (full replacement)
+set_alice '{}'
+check "ee an update without Avatar clears it" 200 'has("Avatar") | not'
+req "$admin" GET /Kids/Profiles
+check "ee the list of kids has no avatar for alice" 200 \
+  "all(.[]; ((.UserId | gsub(\"-\"; \"\") | ascii_downcase) != \"$alice_id\") or (has(\"Avatar\") | not))"
+
+# ef. The channel list asked for alice flags what Jellyfin hides from her: nothing with unrated live TV allowed
+req "$admin" GET "/Users/$alice_id"
+open_policy=$(jq -c '.Policy | .EnableLiveTvAccess = true | .MaxParentalRating = null | .BlockedTags = [] | .AllowedTags = []
+  | .BlockUnratedItems = ((.BlockUnratedItems // []) - ["LiveTvChannel"])' <<<"$body")
+req "$admin" POST "/Users/$alice_id/Policy" "$open_policy"
+set_alice "{\"LiveTvChannelIds\": [\"$peke\"]}"
+req "$admin" GET "/Kids/Admin/LiveTvChannels?userId=$alice_id"
+check "ef PekeTV is not hidden from alice, and each channel is flagged" 200 \
+  "all(.[]; has(\"HiddenFromUser\")) and any(.[]; (.Id | gsub(\"-\"; \"\") | ascii_downcase) == \"$peke\" and .HiddenFromUser == false)"
+req "$admin" GET /Kids/Admin/LiveTvChannels
+check "ef without a user there is no flag" 200 'all(.[]; has("HiddenFromUser") | not)'
+
+# eg. Blocking unrated live TV channels hides PekeTV (no rating), as her own channel list shows
+req "$admin" POST "/Users/$alice_id/Policy" "$(jq -c '.BlockUnratedItems += ["LiveTvChannel"]' <<<"$open_policy")"
+req "$admin" GET "/Kids/Admin/LiveTvChannels?userId=$alice_id"
+check "eg unrated PekeTV is hidden from alice" 200 \
+  "any(.[]; (.Id | gsub(\"-\"; \"\") | ascii_downcase) == \"$peke\" and .HiddenFromUser == true and (has(\"Rating\") | not))"
+req "$alice" GET "/Kids/Users/$alice_id/LiveTv/Channels"
+check "eg and it is missing from her own channels" 200 '.Items | length == 0'
+restore_alice
+
+# eh. Asking for a user who does not exist, or as a kid
+req "$admin" GET "/Kids/Admin/LiveTvChannels?userId=00000000000000000000000000000001"
+check "eh an unknown user is not found" 404
+req "$alice" GET "/Kids/Admin/LiveTvChannels?userId=$alice_id"
+check "eh a kid cannot ask" 403
+set_alice '{}'
+
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
 sleep $((bob_wait + 1))

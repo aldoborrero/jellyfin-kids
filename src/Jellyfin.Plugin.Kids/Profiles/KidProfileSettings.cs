@@ -75,4 +75,9 @@ public sealed record KidProfileSettings
     /// Gets the live TV channels the kid may watch, in order. Empty, the default, means no live TV.
     /// </summary>
     public IReadOnlyList<Guid> LiveTvChannelIds { get; init; } = [];
+
+    /// <summary>
+    /// Gets the kid's avatar, one of <see cref="KidAvatars.Ids"/>; null, the default, means the Jellyfin profile image.
+    /// </summary>
+    public string? Avatar { get; init; }
 }

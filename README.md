@@ -33,7 +33,7 @@ Nothing leaves your server: no telemetry, no accounts, no third-party services.
 
 > [!NOTE]
 > Early development. The plugin targets Jellyfin 12.x and is tested on 12.2.
-> [Wholphin](https://github.com/damontecres/Wholphin) for Android TV is the reference client.
+> Peke for Jellyfin, a kids app for Android TV, is the reference client. The API is open to any Jellyfin client.
 
 ## Install
 
@@ -53,14 +53,14 @@ and for installing a release by hand.
 
 | | |
 |---|---|
-| **Kid profiles** | Mark any Jellyfin user as a kid, with their own home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
+| **Kid profiles** | Mark any Jellyfin user as a kid, with their own avatar, home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
 | **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today, or reset today back to zero (logged). |
-| **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only Wholphin. Off until you turn it on; see [Enforcement](#enforcement). |
+| **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only the kids app. Off until you turn it on; see [Enforcement](#enforcement). |
 | **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
-| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. Each kid shows what still leaves them unprotected in Jellyfin (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, downloads) with a link to fix it, and a banner says when limits only apply in Wholphin. |
+| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. Each kid shows what still leaves them unprotected in Jellyfin (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, picked channels that Jellyfin's parental control hides, downloads) with a link to fix it, and a banner says when limits only apply in the kids app. |
 | **Cleanup** | A deleted user's kid profile and usage go with them, and usage older than 90 days is pruned daily. |
 
 ## Screenshots
@@ -128,7 +128,8 @@ whether or not enforcement is: they are a content rule, like ratings. For kids o
   is not allowed"; other routes answer 403 with `X-Kids-Reason: liveTvChannel`).
 - Jellyfin's own channel list and guide show only their channels; recordings and timers are refused.
 - The kid's Jellyfin user still needs **Allow Live TV access** (the editor warns when it is off), and Jellyfin's
-  ratings and "block unrated" settings still apply to channels and programs.
+  ratings and "block unrated" settings still apply to channels and programs: the dashboard names each picked channel
+  they hide from a kid, and how to fix it.
 - Live TV counts toward the daily allowance and the sitting, and enforcement stops it like any other playback.
 
 Kids clients read the kid's channels and guide from `GET /Kids/Users/{id}/LiveTv/Channels` and `/LiveTv/Programs`.
@@ -155,13 +156,14 @@ blocked, and disabling the plugin removes everything it enforces.
 Clients detect the plugin with the anonymous `GET /Kids/Info`, which lists the features the server
 supports. Clients without kids mode keep working as usual.
 
-- **[Wholphin](https://github.com/damontecres/Wholphin)** (Android TV): kids home, the parent gate,
-  the daily allowance and a per-sitting timer. Kids mode support is in development.
+- **Peke for Jellyfin** (Android TV): the kids client the plugin is built with: who's watching with each kid's
+  avatar, kids home, the parent gate, the daily allowance and a per-sitting timer. In development.
 - Any other client can use the same API.
 
 ## API
 
-The client API lives under `/Kids` and is versioned (`ApiVersion` in `GET /Kids/Info`). The contracts:
+The client API lives under `/Kids` and is versioned (`ApiVersion` and `ApiMinorVersion` in `GET /Kids/Info`: the
+major version changes only on breaking changes, the minor one on additions). The contracts:
 
 - [Profiles and detection](specs/001-kids-plugin-foundation/contracts/kids-api-v1.md)
 - [Parent lock and grants](specs/002-kids-parent-lock/contracts/kids-api-v1-parent-lock.md)
@@ -170,6 +172,7 @@ The client API lives under `/Kids` and is versioned (`ApiVersion` in `GET /Kids/
 - [Enforcement and the sitting](specs/005-kids-enforcement/contracts/kids-api-v1-enforcement.md)
 - [Live TV](specs/006-kids-live-tv/contracts/kids-api-v1-live-tv.md)
 - [Reset today](specs/007-kids-dashboard-ux/contracts/kids-api-v1-reset.md)
+- [Avatars, API 1.1 and channel ratings](specs/012-kids-avatar/contracts/kids-api-v1-avatar.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 
@@ -220,6 +223,7 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 - [x] Stop playback when time is up, on every client (opt-in)
 - [x] Live TV channels per kid, with their guide
 - [x] A dashboard that shows each kid's protection gaps, and Reset today
+- [x] Kid avatars, and a warning when Jellyfin hides a picked channel from a kid
 - [ ] Recommended restrictions in one step, an allowed-hours editor, and picks backed by Jellyfin collections
 - [ ] Per-kid codes, viewing history, and export and import of plugin data
 

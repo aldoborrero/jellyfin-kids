@@ -10,4 +10,5 @@ namespace Jellyfin.Plugin.Kids.Profiles;
 /// <param name="Number">The channel number, if any.</param>
 /// <param name="ImageTag">The tag of the channel logo, or null without one.</param>
 /// <param name="IsRadio">Whether it is a radio channel.</param>
-public sealed record LiveTvChannelInfo(Guid Id, string Name, string? Number, string? ImageTag, bool IsRadio);
+/// <param name="Rating">The rating Jellyfin's parental control compares (the custom rating, else the official one), or null when unrated.</param>
+public sealed record LiveTvChannelInfo(Guid Id, string Name, string? Number, string? ImageTag, bool IsRadio, string? Rating = null);

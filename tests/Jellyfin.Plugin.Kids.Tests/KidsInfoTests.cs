@@ -8,9 +8,16 @@ namespace Jellyfin.Plugin.Kids.Tests;
 public class KidsInfoTests
 {
     [Fact]
-    public void SupportedFeatures_AddWatchTimeResetAfterTheEarlierOnes()
+    public void SupportedFeatures_AddAvatarAfterTheEarlierOnes()
     {
-        Assert.Equal(["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset"], KidsInfo.SupportedFeatures);
+        Assert.Equal(["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset", "avatar"], KidsInfo.SupportedFeatures);
+    }
+
+    [Fact]
+    public void ApiVersion_StaysOneWithMinorVersionOne()
+    {
+        Assert.Equal(1, KidsInfo.CurrentApiVersion);
+        Assert.Equal(1, KidsInfo.CurrentApiMinorVersion);
     }
 
     [Fact]

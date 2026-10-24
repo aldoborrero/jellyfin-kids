@@ -64,7 +64,8 @@ public class KidsController : ControllerBase
     public ActionResult<KidsInfo> GetInfo()
         => new KidsInfo(
             Plugin.Instance?.Version.ToString() ?? string.Empty,
-            ApiVersion: 1,
+            ApiVersion: KidsInfo.CurrentApiVersion,
+            ApiMinorVersion: KidsInfo.CurrentApiMinorVersion,
             Features: KidsInfo.SupportedFeatures,
             Enforcement: EnforcementInfo.From(_coverage),
             LiveTv: EnforcementInfo.FromLiveTv(_coverage));
@@ -73,7 +74,7 @@ public class KidsController : ControllerBase
     /// Lists the kids, so a user switcher can tell who they are.
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <response code="200">The kids' user ids and profile revisions.</response>
+    /// <response code="200">The kids' user ids, profile revisions and avatars.</response>
     /// <returns>The kids.</returns>
     [HttpGet("Profiles")]
     [Authorize(Policy = Policies.IgnoreParentalControl)]
@@ -81,7 +82,7 @@ public class KidsController : ControllerBase
     public async Task<ActionResult<IEnumerable<KidSummaryDto>>> GetProfiles(CancellationToken cancellationToken)
     {
         var kids = await _profiles.ListAsync(cancellationToken).ConfigureAwait(false);
-        return Ok(kids.Select(k => new KidSummaryDto(k.UserId, k.Revision)));
+        return Ok(kids.Select(k => new KidSummaryDto(k.UserId, k.Revision, k.Avatar)));
     }
 
     /// <summary>

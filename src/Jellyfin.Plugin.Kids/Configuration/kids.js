@@ -1,8 +1,8 @@
-// The Kids dashboard page: a banner when limits only apply in Wholphin or some routes cannot be guarded; the list of
-// Jellyfin users where kids are marked and unmarked, each kid with today's screen time, their live TV, what still leaves
-// them unprotected in Jellyfin (with a link to fix it) and an "App only" pill while enforcement is off; the household
-// parent lock; and the screen time settings: "day starts at" with the server time, enforcement on every app with its
-// self-check, and the break between sittings.
+// The Kids dashboard page: a banner when limits only apply in the kids app or some routes cannot be guarded; the list
+// of Jellyfin users where kids are marked and unmarked, each kid with their avatar, today's screen time, their live
+// TV, what still leaves them unprotected in Jellyfin (with a link to fix it, picked channels Jellyfin hides included)
+// and an "App only" pill while enforcement is off; the household parent lock; and the screen time settings: "day
+// starts at" with the server time, enforcement on every app with its self-check, and the break between sittings.
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none. Every name is inserted
 // as text. Successes are confirmed with a toast, errors inline or in a dialog.
 
@@ -77,7 +77,27 @@ function avatar(user) {
     return image;
 }
 
-// Shared with kidsUser.js (the two pages are separate modules): wording, health, live TV state and the server clock
+// Shared with kidsUser.js (the two pages are separate modules): avatars, wording, health, live TV state and the server
+// clock
+
+// The avatar ids a profile can name. The pictures belong to the kids apps; the dashboard shows a coloured initial of
+// its own
+const avatarNames = { leo: 'Leo', max: 'Max', nico: 'Nico', lucy: 'Lucy', sara: 'Sara', mia: 'Mia' };
+const avatarColours = { leo: '#1565c0', max: '#2e7d32', nico: '#6a1b9a', lucy: '#c62828', sara: '#ad1457', mia: '#00695c' };
+
+function avatarName(id) {
+    return avatarNames[id] || id;
+}
+
+function avatarInitial(id) {
+    const name = avatarName(id);
+    const node = element('span', 'kidsAvatarInitial', name.charAt(0).toUpperCase());
+    node.style.backgroundColor = avatarColours[id] || '#546e7a';
+    node.title = 'Avatar: ' + name;
+    node.setAttribute('role', 'img');
+    node.setAttribute('aria-label', 'Avatar: ' + name);
+    return node;
+}
 
 function minutes(seconds) {
     return Math.floor(seconds / 60);
@@ -119,9 +139,40 @@ function editorLink(userId) {
     return '#/configurationpage?name=KidsUser&userId=' + encodeURIComponent(userId);
 }
 
+// Picked channels that Jellyfin's own parental control hides from the kid. The server flags them
+// (Kids/Admin/LiveTvChannels?userId=), so the page never judges ratings itself; the rating and the policy only word
+// the fix (feature 12, research R5). None when the flags are unknown or live TV access is off (its own line).
+function hiddenChannelIssues(user, pickedIds, flagged) {
+    const policy = user && user.Policy;
+    if (!policy || !flagged || policy.EnableLiveTvAccess === false) {
+        return [];
+    }
+
+    const picked = new Set(pickedIds || []);
+    const blocksUnrated = (policy.BlockUnratedItems || []).includes('LiveTvChannel');
+    const hasMaximum = policy.MaxParentalRating !== undefined && policy.MaxParentalRating !== null;
+    const untick = 'Untick Live TV under "Block items with no or unrecognized rating information"';
+    return flagged.filter((channel) => channel.HiddenFromUser && picked.has(channel.Id)).map((channel) => {
+        const hidden = (channel.Name || channel.Id) + ' is hidden from ' + user.Name;
+        let text;
+        if (!channel.Rating && blocksUnrated) {
+            text = hidden + ': unrated live TV channels are blocked. ' + untick + ', or give the channel a rating.';
+        } else if (channel.Rating && hasMaximum) {
+            text = hidden + ': it is rated ' + channel.Rating + ', above the maximum allowed rating. Raise the maximum or change the channel\'s rating.';
+        } else if (channel.Rating && blocksUnrated) {
+            text = hidden + ': Jellyfin does not recognise its rating ' + channel.Rating + ', and unrated live TV channels are blocked. '
+                + untick + ', or change the channel\'s rating.';
+        } else {
+            text = hidden + ' by Jellyfin\'s parental control, for example a blocked or missing tag. Check the Parental control tab.';
+        }
+
+        return { text, href: userTab(user.Id, 'parentalcontrol') };
+    });
+}
+
 // What still leaves a kid unprotected in their Jellyfin policy, each with where to fix it (research R2). Null when
-// the policy is unknown: never "no issue" then.
-function healthIssues(user, pickedIds, serverChannels) {
+// the policy is unknown: never "no issue" then. flagged is the server's channel list for the kid, or null.
+function healthIssues(user, pickedIds, serverChannels, flagged) {
     const policy = user && user.Policy;
     if (!policy) {
         return null;
@@ -151,6 +202,8 @@ function healthIssues(user, pickedIds, serverChannels) {
     } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
         issues.push({ text: 'Live TV access is on but no channels are picked', href: editorLink(user.Id), linkText: 'Pick' });
     }
+
+    issues.push(...hiddenChannelIssues(user, pickedIds, flagged));
 
     if (policy.EnableContentDownloading) {
         issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
@@ -218,9 +271,9 @@ function renderServerTime(view, status) {
     setText(view.querySelector('.kidsServerTime'), 'Server time: ' + clock.now + ' (' + clock.label + ').');
 }
 
-function renderHealth(body, user, pickedIds, serverChannels) {
+function renderHealth(body, user, pickedIds, serverChannels, flagged) {
     body.querySelectorAll('.kidsHealth').forEach((node) => node.remove());
-    const issues = healthIssues(user, pickedIds, serverChannels);
+    const issues = healthIssues(user, pickedIds, serverChannels, flagged);
     for (const issue of issues || []) {
         const line = element('div', 'listItemBodyText secondary kidsWarning kidsHealth');
         line.append(icon('warning'), issue.text);
@@ -255,8 +308,9 @@ function renderUser(view, user, isKid, serverChannels) {
     const summary = element('div', 'listItemBodyText secondary kidsSummary', role.join(' · '));
     body.append(summary);
 
+    const picture = avatar(user);
     if (isKid) {
-        renderKid(view, user, body, summary, role, serverChannels);
+        renderKid(view, user, body, summary, role, serverChannels, picture);
     }
 
     const label = element('label', 'kidsKidCheckbox');
@@ -268,7 +322,7 @@ function renderUser(view, user, isKid, serverChannels) {
     label.append(checkbox, element('span', null, 'Kid'));
     checkbox.addEventListener('change', () => onToggle(view, user, checkbox));
 
-    item.append(avatar(user), body);
+    item.append(picture, body);
 
     // The Kid checkbox stays last, so it lines up on every row
     if (isKid) {
@@ -285,8 +339,9 @@ function renderUser(view, user, isKid, serverChannels) {
     return item;
 }
 
-// A kid's lines: today's screen time from Status (with the "App only" pill), live TV and health from the profile
-function renderKid(view, user, body, summary, role, serverChannels) {
+// A kid's lines: today's screen time from Status (with the "App only" pill), live TV and health from the profile,
+// and their avatar in place of the Jellyfin picture once the profile is read
+function renderKid(view, user, body, summary, role, serverChannels, picture) {
     const usage = element('div', 'listItemBodyText secondary kidsUsage');
     usage.setAttribute('role', 'status');
     usage.textContent = 'Today: …';
@@ -302,7 +357,7 @@ function renderKid(view, user, body, summary, role, serverChannels) {
             usage.textContent = usageText(status);
             if (status.Enforced === false) {
                 const pill = element('span', 'kidsPill kidsAppOnly', 'App only');
-                pill.title = 'Limits only apply in Wholphin while enforcement is off';
+                pill.title = 'Limits only apply in the kids app while enforcement is off';
                 usage.append(pill);
             }
 
@@ -317,6 +372,16 @@ function renderKid(view, user, body, summary, role, serverChannels) {
             const picked = profile.LiveTvChannelIds || [];
             liveTv.textContent = liveTvText(user, picked, serverChannels);
             renderHealth(body, user, picked, serverChannels);
+            if (profile.Avatar) {
+                picture.replaceWith(avatarInitial(profile.Avatar));
+            }
+
+            // Which picked channels Jellyfin hides from the kid: only worth asking when some could play
+            if (picked.length > 0 && user.Policy && user.Policy.EnableLiveTvAccess !== false) {
+                request('GET', 'Kids/Admin/LiveTvChannels?userId=' + encodeURIComponent(user.Id))
+                    .then((flagged) => renderHealth(body, user, picked, serverChannels, flagged))
+                    .catch(() => undefined);
+            }
         })
         .catch(() => {
             liveTv.textContent = 'Live TV unavailable';

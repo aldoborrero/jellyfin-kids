@@ -317,4 +317,44 @@ public class KidProfileValidatorTests
         Assert.Equal("At most 200 channels.", Assert.Single(result.Errors["LiveTvChannelIds"]));
         Assert.DoesNotContain(result.Errors.Keys, k => k.StartsWith("LiveTvChannelIds[", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData("leo", "leo")]
+    [InlineData("max", "max")]
+    [InlineData("nico", "nico")]
+    [InlineData("lucy", "lucy")]
+    [InlineData("sara", "sara")]
+    [InlineData("mia", "mia")]
+    [InlineData("Lucy", "lucy")]
+    [InlineData("  MIA ", "mia")]
+    public void Avatar_KnownId_IsStoredLowercase(string avatar, string expected)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { Avatar = avatar }, null, _catalog, _channels);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(expected, result.Settings!.Avatar);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Avatar_NoneOrBlank_IsNone(string? avatar)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { Avatar = avatar }, new KidProfileSettings { Avatar = "leo" }, _catalog, _channels);
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.Settings!.Avatar);
+    }
+
+    [Theory]
+    [InlineData("bluey")]
+    [InlineData("leo2")]
+    [InlineData("le o")]
+    public void Avatar_Unknown_IsRejected(string avatar)
+    {
+        var result = KidProfileValidator.Validate(new KidProfileInput { Avatar = avatar }, null, _catalog, _channels);
+
+        Assert.Equal($"Unknown avatar '{avatar}'. Use one of: leo, max, nico, lucy, sara, mia, or null.", Assert.Single(result.Errors["Avatar"]));
+    }
 }

@@ -33,6 +33,7 @@ public class KidsLiveTvController : ControllerBase
     private readonly KidProfileService _profiles;
     private readonly KidLiveTvService _liveTv;
     private readonly ILiveTvChannelCatalog _channels;
+    private readonly IKidsUserDirectory _users;
     private readonly TimeProvider _time;
 
     /// <summary>
@@ -42,13 +43,15 @@ public class KidsLiveTvController : ControllerBase
     /// <param name="profiles">The kid profiles, to tell kids from other users.</param>
     /// <param name="liveTv">The kids' channels and guide.</param>
     /// <param name="channels">The server's live TV channels.</param>
+    /// <param name="users">The Jellyfin users, to check the user the channel list is asked for.</param>
     /// <param name="time">The clock, for the default guide window.</param>
-    public KidsLiveTvController(CallerResolver callers, KidProfileService profiles, KidLiveTvService liveTv, ILiveTvChannelCatalog channels, TimeProvider time)
+    public KidsLiveTvController(CallerResolver callers, KidProfileService profiles, KidLiveTvService liveTv, ILiveTvChannelCatalog channels, IKidsUserDirectory users, TimeProvider time)
     {
         _callers = callers;
         _profiles = profiles;
         _liveTv = liveTv;
         _channels = channels;
+        _users = users;
         _time = time;
     }
 
@@ -118,19 +121,23 @@ public class KidsLiveTvController : ControllerBase
     }
 
     /// <summary>
-    /// Lists the server's live TV channels for the kid editor, whoever may watch them.
+    /// Lists the server's live TV channels for the kid editor, whoever may watch them, with their ratings; for a
+    /// user, also whether Jellyfin's parental control hides each channel from them.
     /// </summary>
     /// <param name="ids">Comma-separated channel ids to resolve instead of listing all; unknown ids are left out.</param>
+    /// <param name="userId">A user to flag the channels Jellyfin hides from (<c>HiddenFromUser</c>).</param>
     /// <response code="200">The channels, in Jellyfin's channel order.</response>
     /// <response code="400">An id is not a GUID.</response>
     /// <response code="403">The caller is not an administrator.</response>
+    /// <response code="404">The user does not exist.</response>
     /// <returns>The channels, or a refusal.</returns>
     [HttpGet("Admin/LiveTvChannels")]
     [Authorize(Policy = Policies.IgnoreParentalControl)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IEnumerable<LiveTvChannelDto>>> GetAdminChannels([FromQuery] string? ids)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<LiveTvChannelDto>>> GetAdminChannels([FromQuery] string? ids, [FromQuery] Guid? userId)
     {
         // Administrators only: a parent grant unlocks profile changes, not this dashboard data
         var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
@@ -145,7 +152,18 @@ public class KidsLiveTvController : ControllerBase
         }
 
         var channels = parsed is null ? _channels.List() : _channels.Resolve(parsed);
-        return Ok(channels.Select(LiveTvChannelDto.From));
+        if (userId is not { } user)
+        {
+            return Ok(channels.Select(LiveTvChannelDto.From));
+        }
+
+        if (user == Guid.Empty || !_users.UserExists(user))
+        {
+            return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = "No such user." });
+        }
+
+        var visible = _channels.VisibleTo(user);
+        return Ok(channels.Select(c => LiveTvChannelDto.From(c, !visible.Contains(c.Id))));
     }
 
     private static bool TryParseIds(string? text, out List<Guid>? ids, out string? bad)

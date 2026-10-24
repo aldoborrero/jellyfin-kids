@@ -45,6 +45,11 @@
             #KidsUserPage .kidsUnsaved { margin: 0 0 0.5em; color: var(--jf-palette-warning-main, #f0ad4e); }
             #KidsUserPage .kidsUnsaved[hidden] { display: none; }
             #KidsUserPage .kidsLiveTvState { margin: 0 0 1em; font-weight: 600; }
+            #KidsUserPage .kidsAvatarRow { display: flex; align-items: center; gap: 1em; }
+            #KidsUserPage .kidsAvatarRow .selectContainer { flex-grow: 1; margin-bottom: 0; }
+            #KidsUserPage .kidsAvatarHelp { margin-bottom: 1.8em; }
+            #KidsUserPage .kidsAvatarInitial { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 2.2em; height: 2.2em; border-radius: 50%; color: #fff; font-weight: 600; font-size: 1.3em; }
+            #KidsUserPage .kidsAvatarPreview:empty { display: none; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -80,7 +85,7 @@
                                 <p class="fieldDescription kidsSittingLine" hidden></p>
                                 <p class="fieldDescription kidsDeniedLine" hidden></p>
                                 <p class="fieldDescription kidsWarning kidsAppOnlyLine" hidden>
-                                    App only: limits only apply in Wholphin while enforcement is off.
+                                    App only: limits only apply in the kids app while enforcement is off.
                                     <a is="emby-linkbutton" class="button-link" href="#/configurationpage?name=Kids">Turn it on</a>
                                 </p>
                                 <p class="fieldDescription kidsServerTimeLine" hidden></p>
@@ -147,6 +152,24 @@
                             <div class="sectionTitleContainer flex align-items-center">
                                 <h3 class="sectionTitle">Browsing</h3>
                             </div>
+                            <div class="kidsAvatarRow">
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsAvatar">Avatar</label>
+                                    <select is="emby-select" id="kidsAvatar" class="emby-select-withcolor emby-select kidsAvatar" aria-describedby="kidsAvatarHelp">
+                                        <option value="">Jellyfin profile image</option>
+                                        <option value="leo">Leo</option>
+                                        <option value="max">Max</option>
+                                        <option value="nico">Nico</option>
+                                        <option value="lucy">Lucy</option>
+                                        <option value="sara">Sara</option>
+                                        <option value="mia">Mia</option>
+                                    </select>
+                                    <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                                </div>
+                                <span class="kidsAvatarPreview" aria-hidden="true"></span>
+                            </div>
+                            <div class="fieldDescription kidsAvatarHelp" id="kidsAvatarHelp">Shown on kids apps that support avatars, such as Peke for Jellyfin, to tell the kids apart. Without one they show the Jellyfin profile image.</div>
+                            <div class="fieldDescription kidsError" data-error-for="Avatar" role="status" aria-live="polite"></div>
                             <div class="checkboxContainer">
                                 <label>
                                     <input is="emby-checkbox" type="checkbox" class="kidsSearchAllowed" />

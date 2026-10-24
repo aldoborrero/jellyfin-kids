@@ -47,6 +47,21 @@ public sealed class JellyfinLiveTvChannelCatalog : ILiveTvChannelCatalog
         return [.. channels.Items.OfType<LiveTvChannel>().Select(ToInfo)];
     }
 
+    /// <inheritdoc />
+    public IReadOnlySet<Guid> VisibleTo(Guid userId)
+    {
+        // The same query as the kid's own channel list (KidLiveTvService.Channels): Jellyfin applies the user's
+        // parental control to it
+        var channels = _liveTvManager.GetInternalChannels(new LiveTvChannelQuery { UserId = userId }, new DtoOptions(false), CancellationToken.None);
+        return channels.Items.Select(i => i.Id).ToHashSet();
+    }
+
+    // What BaseItem.IsParentalAllowed compares: the custom rating, else the official one (both inherited from parents)
+    private static string? Rating(LiveTvChannel channel)
+        => !string.IsNullOrWhiteSpace(channel.CustomRatingForComparison) ? channel.CustomRatingForComparison
+            : !string.IsNullOrWhiteSpace(channel.OfficialRatingForComparison) ? channel.OfficialRatingForComparison
+            : null;
+
     private LiveTvChannelInfo ToInfo(LiveTvChannel channel)
     {
         var image = channel.HasImage(ImageType.Primary) ? channel.GetImageInfo(ImageType.Primary, 0) : null;
@@ -55,6 +70,7 @@ public sealed class JellyfinLiveTvChannelCatalog : ILiveTvChannelCatalog
             channel.Name,
             string.IsNullOrEmpty(channel.Number) ? null : channel.Number,
             image is null ? null : _imageProcessor.GetImageCacheTag(channel, image),
-            channel.ChannelType == ChannelType.Radio);
+            channel.ChannelType == ChannelType.Radio,
+            Rating(channel));
     }
 }
