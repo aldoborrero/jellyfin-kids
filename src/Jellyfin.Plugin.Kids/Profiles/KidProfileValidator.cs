@@ -40,6 +40,11 @@ public static class KidProfileValidator
             errors["SessionLimitMinutes"] = [string.Create(CultureInfo.InvariantCulture, $"Must be between {KidProfileSettings.MinSessionLimit} and {KidProfileSettings.MaxSessionLimit}.")];
         }
 
+        if (!KidAvatars.TryNormalize(input.Avatar, out var avatar))
+        {
+            errors["Avatar"] = [$"Unknown avatar '{input.Avatar}'. Use one of: {string.Join(", ", KidAvatars.Ids)}, or null."];
+        }
+
         var sections = ValidateSections(input.Sections ?? [], errors);
         var picks = ValidatePicks(input.PickedItemIds ?? [], stored?.PickedItemIds ?? [], catalog, errors);
         var liveTv = ValidateChannels(input.LiveTvChannelIds ?? [], stored?.LiveTvChannelIds ?? [], channels, errors);
@@ -58,7 +63,8 @@ public static class KidProfileValidator
             PickedItemIds = picks,
             DailyAllowanceMinutes = allowance,
             SessionLimitMinutes = sessionLimit,
-            LiveTvChannelIds = liveTv
+            LiveTvChannelIds = liveTv,
+            Avatar = avatar
         };
         return new ValidationResult(settings, errors);
     }

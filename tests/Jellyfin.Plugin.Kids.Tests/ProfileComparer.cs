@@ -28,7 +28,8 @@ public sealed class ProfileComparer : IEqualityComparer<KidProfile?>
             && x.Settings.PickedItemIds.SequenceEqual(y.Settings.PickedItemIds)
             && x.Settings.DailyAllowanceMinutes == y.Settings.DailyAllowanceMinutes
             && x.Settings.SessionLimitMinutes == y.Settings.SessionLimitMinutes
-            && x.Settings.LiveTvChannelIds.SequenceEqual(y.Settings.LiveTvChannelIds);
+            && x.Settings.LiveTvChannelIds.SequenceEqual(y.Settings.LiveTvChannelIds)
+            && x.Settings.Avatar == y.Settings.Avatar;
     }
 
     public int GetHashCode(KidProfile? obj) => obj is null ? 0 : HashCode.Combine(obj.UserId, obj.Revision);

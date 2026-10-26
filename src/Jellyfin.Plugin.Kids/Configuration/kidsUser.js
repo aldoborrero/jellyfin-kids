@@ -1,9 +1,10 @@
-// The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it); today's screen
-// time with the server time and "Reset today"; the daily allowance and the sitting limit, each with an explicit
-// "No limit", and the household break; bonus minutes; the allowed hours from Jellyfin (read-only); search, autoplay
-// and its limit; home sections (order and visibility); the picked collections and playlists; and the live TV channels
-// the kid may watch. Saves with the loaded revision; a conflict never overwrites. Bonus minutes and Reset today apply
-// straight away, apart from the save. Every name is inserted as text; successes are confirmed with a toast.
+// The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it), picked live TV
+// channels that Jellyfin hides from them included; today's screen time with the server time and "Reset today"; the
+// daily allowance and the sitting limit, each with an explicit "No limit", and the household break; bonus minutes; the
+// allowed hours from Jellyfin (read-only); the avatar; search, autoplay and its limit; home sections (order and
+// visibility); the picked collections and playlists; and the live TV channels the kid may watch. Saves with the loaded
+// revision; a conflict never overwrites. Bonus minutes and Reset today apply straight away, apart from the save. Every
+// name is inserted as text; successes are confirmed with a toast.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -94,7 +95,27 @@ function setLine(node, text) {
     node.hidden = !text;
 }
 
-// Shared with kids.js (the two pages are separate modules): wording, health, live TV state and the server clock
+// Shared with kids.js (the two pages are separate modules): avatars, wording, health, live TV state and the server
+// clock
+
+// The avatar ids a profile can name. The pictures belong to the kids apps; the dashboard shows a coloured initial of
+// its own
+const avatarNames = { leo: 'Leo', max: 'Max', nico: 'Nico', lucy: 'Lucy', sara: 'Sara', mia: 'Mia' };
+const avatarColours = { leo: '#1565c0', max: '#2e7d32', nico: '#6a1b9a', lucy: '#c62828', sara: '#ad1457', mia: '#00695c' };
+
+function avatarName(id) {
+    return avatarNames[id] || id;
+}
+
+function avatarInitial(id) {
+    const name = avatarName(id);
+    const node = element('span', 'kidsAvatarInitial', name.charAt(0).toUpperCase());
+    node.style.backgroundColor = avatarColours[id] || '#546e7a';
+    node.title = 'Avatar: ' + name;
+    node.setAttribute('role', 'img');
+    node.setAttribute('aria-label', 'Avatar: ' + name);
+    return node;
+}
 
 function minutes(seconds) {
     return Math.floor(seconds / 60);
@@ -156,10 +177,41 @@ function userTab(userId, tab) {
     return '#/dashboard/users/' + userId + '/' + tab;
 }
 
+// Picked channels that Jellyfin's own parental control hides from the kid. The server flags them
+// (Kids/Admin/LiveTvChannels?userId=), so the page never judges ratings itself; the rating and the policy only word
+// the fix (feature 12, research R5). None when the flags are unknown or live TV access is off (its own line).
+function hiddenChannelIssues(user, pickedIds, flagged) {
+    const policy = user && user.Policy;
+    if (!policy || !flagged || policy.EnableLiveTvAccess === false) {
+        return [];
+    }
+
+    const picked = new Set(pickedIds || []);
+    const blocksUnrated = (policy.BlockUnratedItems || []).includes('LiveTvChannel');
+    const hasMaximum = policy.MaxParentalRating !== undefined && policy.MaxParentalRating !== null;
+    const untick = 'Untick Live TV under "Block items with no or unrecognized rating information"';
+    return flagged.filter((channel) => channel.HiddenFromUser && picked.has(channel.Id)).map((channel) => {
+        const hidden = (channel.Name || channel.Id) + ' is hidden from ' + user.Name;
+        let text;
+        if (!channel.Rating && blocksUnrated) {
+            text = hidden + ': unrated live TV channels are blocked. ' + untick + ', or give the channel a rating.';
+        } else if (channel.Rating && hasMaximum) {
+            text = hidden + ': it is rated ' + channel.Rating + ', above the maximum allowed rating. Raise the maximum or change the channel\'s rating.';
+        } else if (channel.Rating && blocksUnrated) {
+            text = hidden + ': Jellyfin does not recognise its rating ' + channel.Rating + ', and unrated live TV channels are blocked. '
+                + untick + ', or change the channel\'s rating.';
+        } else {
+            text = hidden + ' by Jellyfin\'s parental control, for example a blocked or missing tag. Check the Parental control tab.';
+        }
+
+        return { text, href: userTab(user.Id, 'parentalcontrol') };
+    });
+}
+
 // What still leaves a kid unprotected in their Jellyfin policy, each with where to fix it (research R2). Null when
 // the policy is unknown: never "no issue" then. In the editor the channel list is on the page, so "none picked" has
-// no link.
-function healthIssues(user, pickedIds, serverChannels) {
+// no link. flagged is the server's channel list for the kid, or null.
+function healthIssues(user, pickedIds, serverChannels, flagged) {
     const policy = user && user.Policy;
     if (!policy) {
         return null;
@@ -189,6 +241,8 @@ function healthIssues(user, pickedIds, serverChannels) {
     } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
         issues.push({ text: 'Live TV access is on but no channels are picked', href: null });
     }
+
+    issues.push(...hiddenChannelIssues(user, pickedIds, flagged));
 
     if (policy.EnableContentDownloading) {
         issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
@@ -287,6 +341,7 @@ export default function (view, params) {
     const autoplayInput = view.querySelector('.kidsAutoplayEnabled');
     const searchInput = view.querySelector('.kidsPickSearch');
     const results = view.querySelector('.kidsPickResults');
+    const avatarSelect = view.querySelector('.kidsAvatar');
 
     // Editor state, filled from the server profile
     let revision = 0;
@@ -428,7 +483,8 @@ export default function (view, params) {
             // Always sent: the update is a full replacement, and omitting them would clear them
             DailyAllowanceMinutes: allowance.value(),
             SessionLimitMinutes: sessionLimit.value(),
-            LiveTvChannelIds: channels.filter((channel) => channel.allowed).map((channel) => channel.Id)
+            LiveTvChannelIds: channels.filter((channel) => channel.allowed).map((channel) => channel.Id),
+            Avatar: avatarSelect.value || null
         };
     }
 
@@ -443,6 +499,26 @@ export default function (view, params) {
     function takeSnapshot() {
         snapshot = JSON.stringify(currentBody());
         renderDirty();
+    }
+
+    // The avatar: a stored id this page does not know (a later plugin's) is kept as an extra option, so saving the
+    // other settings sends it back unchanged
+    function renderAvatar() {
+        const preview = view.querySelector('.kidsAvatarPreview');
+        preview.replaceChildren(...(avatarSelect.value ? [avatarInitial(avatarSelect.value)] : []));
+    }
+
+    function loadAvatar(id) {
+        avatarSelect.querySelectorAll('option[data-extra]').forEach((option) => option.remove());
+        if (id && ![...avatarSelect.options].some((option) => option.value === id)) {
+            const option = element('option', null, id);
+            option.value = id;
+            option.dataset.extra = 'true';
+            avatarSelect.append(option);
+        }
+
+        avatarSelect.value = id || '';
+        renderAvatar();
     }
 
     function renderCap() {
@@ -575,7 +651,8 @@ export default function (view, params) {
     // Health lines from the stored channel list, the administrator one first
     function renderHealth(pickedIds) {
         const list = view.querySelector('.kidsHealthList');
-        const issues = healthIssues(user, pickedIds, serverChannels) || [];
+        // The server's list for this kid carries the hidden flags, which follow Jellyfin's policy, not the picks
+        const issues = healthIssues(user, pickedIds, serverChannels, serverChannels) || [];
         list.replaceChildren(...issues.map((issue) => {
             const line = element('p', 'kidsWarning');
             line.append(icon('warning'), issue.text);
@@ -646,6 +723,7 @@ export default function (view, params) {
         capInput.value = profile.AutoplayCap;
         allowance.load(profile.DailyAllowanceMinutes);
         sessionLimit.load(profile.SessionLimitMinutes);
+        loadAvatar(profile.Avatar);
         sections = profile.Sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible }));
         picks = profile.PickedItemIds.map((id) => ({ Id: id, Name: '', Type: null, missing: true }));
         // Older plugins have no live TV field; the editor then shows the server's channels unticked
@@ -771,7 +849,8 @@ export default function (view, params) {
         form.hidden = true;
         snapshot = null;
         // The channel list and the configuration are not needed to edit the rest: if they fail, their lines say less
-        const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels').catch(() => null);
+        // Asked for this kid, so each channel also says whether Jellyfin hides it from them
+        const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels?userId=' + encodeURIComponent(userId)).catch(() => null);
         const household = pluginConfiguration().catch(() => null);
         return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household])
             .then(([profile, loadedUser, serverList, loadedConfig]) => {
@@ -871,6 +950,7 @@ export default function (view, params) {
     });
     resetButton.addEventListener('click', resetToday);
     autoplayInput.addEventListener('change', renderCap);
+    avatarSelect.addEventListener('change', renderAvatar);
     capInput.addEventListener('input', renderCap);
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimer);

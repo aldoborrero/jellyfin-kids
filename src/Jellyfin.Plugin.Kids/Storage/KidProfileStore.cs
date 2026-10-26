@@ -49,7 +49,7 @@ public sealed class KidProfileStore
     }
 
     /// <summary>
-    /// Lists every kid with their profile revision.
+    /// Lists every kid with their profile revision and avatar.
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The kids.</returns>
@@ -58,12 +58,14 @@ public sealed class KidProfileStore
         EnsureUsable();
         using var connection = _database.OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT user_id, revision FROM kid_profile";
+        command.CommandText = "SELECT user_id, revision, settings FROM kid_profile";
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var kids = new List<KidSummary>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            kids.Add(new KidSummary(Guid.ParseExact(reader.GetString(0), "N"), reader.GetInt64(1)));
+            // A household has a few kids, so reading each one's settings is cheap
+            var settings = JsonSerializer.Deserialize<KidProfileSettings>(reader.GetString(2), _jsonOptions);
+            kids.Add(new KidSummary(Guid.ParseExact(reader.GetString(0), "N"), reader.GetInt64(1), settings?.Avatar));
         }
 
         return kids;

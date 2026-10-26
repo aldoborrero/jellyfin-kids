@@ -690,7 +690,9 @@ Spec numbers follow the order features are built, not this table: spec `004-kids
 per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4) becomes spec 005. Spec
 `006-kids-live-tv` (2026-10-20, plugin 0.0.6.0) adds per-kid live TV channels (§3.7), outside this table. Spec `007-kids-dashboard-ux` (2026-10-22, plugin
 0.0.7.0) makes the dashboard show each kid's protection gaps with Fix links, the enforcement state, explicit "No limit"
-choices and the live TV state, and adds Reset today.
+choices and the live TV state, and adds Reset today. Spec `012-kids-avatar` (2026-10-24, plugin 0.0.8.0, named after
+its branch) adds kid avatars to the profile and the list of kids (API 1.1, `ApiMinorVersion`), warns on the dashboard
+when Jellyfin's parental control hides a picked live TV channel from a kid, and names Peke for Jellyfin as the client.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.

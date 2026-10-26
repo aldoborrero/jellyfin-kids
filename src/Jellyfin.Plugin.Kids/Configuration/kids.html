@@ -15,6 +15,7 @@
             #KidsPage .kidsUserRow .listItemBodyText.secondary { white-space: normal; overflow-wrap: anywhere; }
             #KidsPage .kidsAvatar { width: 2.86em; height: 2.86em; min-width: 2.86em; min-height: 2.86em; border-radius: 50%; margin: 0.7em 0.29em 0.7em 0.715em; }
             #KidsPage .kidsUserRow > .listItemIcon { margin: 0.5em 0.2em 0.5em 0.5em; }
+            #KidsPage .kidsAvatarInitial { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 1.3em; width: 2.2em; height: 2.2em; min-width: 2.2em; border-radius: 50%; margin: 0.55em 0.22em 0.55em 0.55em; }
             #KidsPage .kidsKidCheckbox { width: auto; flex-shrink: 0; margin: 0 0.75em; }
             #KidsPage .kidsEdit { flex-shrink: 0; margin: 0; padding: 0.6em 0.8em; }
             #KidsPage .kidsEdit .material-icons { margin-right: 0.35em; }
@@ -50,7 +51,7 @@
                             <h2 class="sectionTitle">Kids</h2>
                         </div>
                         <p class="fieldDescription">
-                            Mark the Jellyfin users who are kids. Kids get the kids mode of clients such as Wholphin,
+                            Mark the Jellyfin users who are kids. Kids get the kids mode of clients such as Peke for Jellyfin,
                             with the settings you choose here.
                         </p>
                     </div>
@@ -59,7 +60,7 @@
                         <div class="kidsBannerItem kidsBannerEnforcement" hidden>
                             <p>
                                 <span class="material-icons warning" aria-hidden="true"></span>
-                                <strong>Limits only apply in Wholphin.</strong>
+                                <strong>Limits only apply in the kids app.</strong>
                                 Other apps keep playing when a kid's time is up, the sitting limit is reached or allowed
                                 hours end.
                             </p>
@@ -178,8 +179,8 @@
                                 </label>
                                 <div class="fieldDescription checkboxFieldDescription">
                                     When a kid's allowance, sitting limit or allowed hours run out, the server warns them,
-                                    stops the player and refuses new playback on every app, not only Wholphin, until a
-                                    bonus, a break or the next day. Off, the limits only apply in Wholphin.
+                                    stops the player and refuses new playback on every app, not only the kids app, until a
+                                    bonus, a break or the next day. Off, the limits only apply in the kids app.
                                 </div>
                                 <div class="fieldDescription checkboxFieldDescription">
                                     Out of reach: an app that ignores the stop keeps playing what it has already

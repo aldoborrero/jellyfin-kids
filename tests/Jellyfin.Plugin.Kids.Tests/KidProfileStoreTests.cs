@@ -166,6 +166,31 @@ public sealed class KidProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task List_CarriesEachKidsAvatar()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        await _store.InsertAsync(a, new KidProfileSettings { Avatar = "lucy" });
+        await _store.InsertAsync(b, new KidProfileSettings());
+
+        var list = await _store.ListAsync();
+
+        Assert.Equal("lucy", list.Single(s => s.UserId == a).Avatar);
+        Assert.Null(list.Single(s => s.UserId == b).Avatar);
+    }
+
+    [Fact]
+    public async Task InsertAndUpdate_KeepTheAvatar()
+    {
+        var userId = Guid.NewGuid();
+        await _store.InsertAsync(userId, new KidProfileSettings { Avatar = "mia" });
+        Assert.Equal("mia", (await _store.GetAsync(userId))!.Settings.Avatar);
+
+        await _store.UpdateIfRevisionAsync(userId, 1, new KidProfileSettings());
+        Assert.Null((await _store.GetAsync(userId))!.Settings.Avatar);
+    }
+
+    [Fact]
     public async Task Get_SettingsJsonWithUnknownAndMissingProperties_UsesDefaults()
     {
         var userId = Guid.NewGuid();
@@ -234,6 +259,7 @@ public sealed class KidProfileStoreTests : IDisposable
         Assert.Null(profile!.Settings.SessionLimitMinutes);
         Assert.Equal(45, profile.Settings.DailyAllowanceMinutes);
         Assert.Empty(profile.Settings.LiveTvChannelIds);
+        Assert.Null(profile.Settings.Avatar);
     }
 
     [Fact]

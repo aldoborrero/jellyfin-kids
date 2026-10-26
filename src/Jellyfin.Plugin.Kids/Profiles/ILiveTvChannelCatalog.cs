@@ -20,4 +20,12 @@ public interface ILiveTvChannelCatalog
     /// </summary>
     /// <returns>The channels.</returns>
     IReadOnlyList<LiveTvChannelInfo> List();
+
+    /// <summary>
+    /// Gets the channels Jellyfin lists for a user, after its parental control (maximum rating, blocked unrated items,
+    /// blocked and allowed tags): the others are hidden from that user.
+    /// </summary>
+    /// <param name="userId">The user id.</param>
+    /// <returns>The ids of the channels the user can see.</returns>
+    IReadOnlySet<Guid> VisibleTo(Guid userId);
 }

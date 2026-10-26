@@ -47,4 +47,9 @@ public sealed record KidProfileInput
     /// Gets the live TV channels the kid may watch, in order; null or empty means no live TV.
     /// </summary>
     public IReadOnlyList<Guid>? LiveTvChannelIds { get; init; }
+
+    /// <summary>
+    /// Gets the avatar id; null or blank means none.
+    /// </summary>
+    public string? Avatar { get; init; }
 }
