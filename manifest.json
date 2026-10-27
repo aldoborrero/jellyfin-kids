@@ -2,11 +2,19 @@
   {
     "guid": "d62ee188-270c-49d8-b7b9-5e524fec2335",
     "name": "Kids",
-    "description": "Server side of kids mode for Jellyfin clients such as Wholphin: kid profiles, a household parent lock and screen time shared across devices.",
+    "description": "Server side of kids mode for Jellyfin clients such as Peke for Jellyfin: kid profiles with avatars, a household parent lock, screen time shared across devices and per-kid live TV, through an API any client can use.",
     "overview": "Parent-controlled kids profiles",
     "owner": "aldoborrero",
     "category": "Administration",
     "versions": [
+      {
+        "version": "0.0.9.0",
+        "changelog": "Undo a bonus: POST /Kids/Users/{id}/WatchTime/Bonus now answers the new bonus's id and until when it can be undone. An administrator or a parent grant holder can undo it with DELETE /Kids/Users/{id}/WatchTime/Bonus/{bonusId} within 10 minutes on the same day, and gets the kid's new status (time's up can come back). Ids are never reused, so two TVs never undo each other's bonus. GET /Kids/Users/{id}/WatchTime/Bonus lists today's bonuses. Bonuses given with a parent grant are recorded as such. Undos are logged. End a break: POST /Kids/Users/{id}/WatchTime/Break/End lets a kid in the break after their sitting limit watch again at once, keeping today's used time and bonus; the next sitting starts from zero at the next playback. Logged. GET /Kids/Info reports API 1.2 (ApiMinorVersion 2) with the bonusUndo and breakEnd capabilities. The kid editor lists today's bonuses with Undo and shows End break during a break. The plugin database moves to schema 5.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/aldoborrero/jellyfin-kids/releases/download/v0.0.9.0/kids_0.0.9.0.zip",
+        "checksum": "b041dbca63feadb9ba35daf6f07a09e4",
+        "timestamp": "2026-10-27T10:12:13Z"
+      },
       {
         "version": "0.0.7.0",
         "changelog": "Kids dashboard: each kid row says what still leaves the kid unprotected (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access out of step with the picked channels, downloads), each with a Fix link to the right tab of Jellyfin's user editor. A banner at the top says when limits only apply in Wholphin (enforcement off, with a Turn on button) or when routes cannot be guarded, and kid rows show an \"App only\" pill meanwhile. The daily allowance and the sitting limit get explicit \"No limit\" choices, and an allowance of 0 reads \"No screen time today\". Rows and the editor show \"Watches N of M channels\" or \"No live TV\", the server time with its UTC offset, the household break next to the sitting limit and the kid's allowed hours. Every save confirms with a toast, and forms say when they have unsaved changes. Reset today: POST /Kids/Users/{id}/WatchTime/Reset (administrator or parent grant) sets the kid's used time and bonus for today back to 0 and lifts a stop for time or the sitting limit at once; it is logged (capability watchTimeReset). The kid editor has a Reset today button.",
