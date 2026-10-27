@@ -25,6 +25,8 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// <param name="SittingRemainingSeconds">Sitting limit minus used, never negative; with the limit.</param>
 /// <param name="BreakRemainingSeconds">Seconds until the kid may play again, during the break after the limit.</param>
 /// <param name="BreakSeconds">The household break; with the limit.</param>
+/// <param name="BonusId">Only in the answer to <c>POST …/WatchTime/Bonus</c>: the bonus just given (feature 13).</param>
+/// <param name="BonusUndoUntil">Only in that answer: until when that bonus can be undone (UTC).</param>
 public record KidStatusDto(
     string Date,
     long UsedSeconds,
@@ -42,7 +44,9 @@ public record KidStatusDto(
     long? SittingUsedSeconds = null,
     long? SittingRemainingSeconds = null,
     long? BreakRemainingSeconds = null,
-    long? BreakSeconds = null)
+    long? BreakSeconds = null,
+    long? BonusId = null,
+    DateTime? BonusUndoUntil = null)
 {
     /// <summary>
     /// Maps a status, with the kid's enforcement state when there is one.

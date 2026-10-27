@@ -55,7 +55,7 @@ and for installing a release by hand.
 |---|---|
 | **Kid profiles** | Mark any Jellyfin user as a kid, with their own avatar, home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
-| **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today, or reset today back to zero (logged). |
+| **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today and undo a wrong one within 10 minutes, end a break after the sitting limit early, or reset today back to zero (all logged). |
 | **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. Works with jellyfin-web and any other client, not only the kids app. Off until you turn it on; see [Enforcement](#enforcement). |
 | **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
@@ -173,6 +173,7 @@ major version changes only on breaking changes, the minor one on additions). The
 - [Live TV](specs/006-kids-live-tv/contracts/kids-api-v1-live-tv.md)
 - [Reset today](specs/007-kids-dashboard-ux/contracts/kids-api-v1-reset.md)
 - [Avatars, API 1.1 and channel ratings](specs/012-kids-avatar/contracts/kids-api-v1-avatar.md)
+- [Bonus undo and End break, API 1.2](specs/013-bonus-undo-break/contracts/kids-api-v1-bonus-undo-break.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 

@@ -113,6 +113,28 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     }
 
     /// <summary>
+    /// Ends a kid's break after the sitting limit, for a grown-up's End break (feature 13): the sitting is forgotten,
+    /// so the next counted playback starts a new one from zero. Nothing changes when the kid is not in a break, so
+    /// this never gives more than the break back.
+    /// </summary>
+    /// <param name="kid">The kid.</param>
+    /// <param name="now">The current time.</param>
+    /// <returns>How much of the break was left, or null if the kid was not in a break.</returns>
+    public TimeSpan? EndBreak(Guid kid, DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            if (!_kids.TryGetValue(kid, out var state) || Sitting(state, now) is not { BreakEndsAt: { } ends } || ends <= now)
+            {
+                return null;
+            }
+
+            state.Sitting.Reset();
+            return ends - now;
+        }
+    }
+
+    /// <summary>
     /// Forgets a kid who is no longer one.
     /// </summary>
     /// <param name="kid">The user.</param>

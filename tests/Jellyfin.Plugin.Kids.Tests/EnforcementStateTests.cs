@@ -290,4 +290,70 @@ public class EnforcementStateTests
         _state.ResetSitting(Guid.NewGuid());
         Assert.Empty(_state.LoadedKids());
     }
+
+    // End break (feature 13)
+    [Fact]
+    public void EndBreak_InTheBreak_LiftsItAndTheNextSittingStartsFromZero()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), 30, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(30));
+        var at = Now.AddMinutes(35);
+        Assert.Equal(DenialReason.SessionLimit, _state.Evaluate(Kid, at)!.Reason);
+
+        var left = _state.EndBreak(Kid, at);
+
+        Assert.Equal(TimeSpan.FromMinutes(10), left);
+        Assert.Null(_state.Evaluate(Kid, at));
+        var sitting = _state.Describe(Kid, at).Sitting!;
+        Assert.Equal(0, sitting.UsedMs);
+        Assert.Null(sitting.BreakEndsAt);
+
+        // The next playback starts a new sitting, counted from zero with the full limit
+        _state.OnPlayed(Kid, at.AddMinutes(1), at.AddMinutes(11));
+        sitting = _state.Describe(Kid, at.AddMinutes(11)).Sitting!;
+        Assert.Equal(at.AddMinutes(1), sitting.StartedAt);
+        Assert.Equal(10 * 60_000, sitting.UsedMs);
+        Assert.Equal(20 * 60_000, sitting.RemainingMs);
+    }
+
+    [Fact]
+    public void EndBreak_WithinTheSitting_ChangesNothing()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), 30, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(20));
+
+        Assert.Null(_state.EndBreak(Kid, Now.AddMinutes(20)));
+        Assert.Equal(20 * 60_000, _state.Describe(Kid, Now.AddMinutes(20)).Sitting!.UsedMs);
+    }
+
+    [Fact]
+    public void EndBreak_AfterTheBreakRanOut_ChangesNothing()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), 30, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(30));
+
+        Assert.Null(_state.EndBreak(Kid, Now.AddMinutes(45)));
+    }
+
+    [Fact]
+    public void EndBreak_WithoutASittingLimitOrForAnUnknownKid_ChangesNothing()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, null, 0), null, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(90));
+
+        Assert.Null(_state.EndBreak(Kid, Now.AddMinutes(91)));
+        Assert.Null(_state.EndBreak(Guid.NewGuid(), Now));
+    }
+
+    [Fact]
+    public void EndBreak_GivesNoScreenTime()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, 30, 0), 30, null);
+        _state.OnPlayed(Kid, Now, Now.AddMinutes(30));
+        Assert.Equal(DenialReason.TimeUp, _state.Evaluate(Kid, Now.AddMinutes(31))!.Reason);
+
+        Assert.NotNull(_state.EndBreak(Kid, Now.AddMinutes(31)));
+
+        Assert.Equal(DenialReason.TimeUp, _state.Evaluate(Kid, Now.AddMinutes(31))!.Reason);
+    }
 }

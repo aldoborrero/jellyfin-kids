@@ -815,9 +815,22 @@ if [[ -n ${DEV_CHECK_SLOW-} ]]; then
      and .BreakRemainingSeconds > 0 and .BreakSeconds == 60'
   playback_info "$alice" kids-check-bi-2
   check "bi PlaybackInfo is NotAllowed during the break" 200 '.ErrorCode == "NotAllowed"'
-  sleep 65
+  # A grown-up ends the break (feature 13): she may play at once, with today's time and bonus as they were
+  play "$alice" kids-check-bi-2 stop kids-check-bi-2
+  req "$alice" GET "/Kids/Users/$alice_id/Status"
+  bi_used=$(jq -r .UsedSeconds <<<"$body")
+  bi_bonus=$(jq -r .BonusSeconds <<<"$body")
+  bi_lines() { grep -cE "Break of .* ended by .?${DEV_ADMIN_USER:-admin}.? with [0-9]+ s left" "$(ls -t "$dev"/log/log_*.log | head -1)" || true; }
+  bi_before=$(bi_lines)
+  req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Break/End"
+  check "bi End break lifts the break and keeps today's time and bonus" 200 \
+    "(has(\"DeniedReason\") | not) and (has(\"BreakRemainingSeconds\") | not) and .SittingUsedSeconds == 0
+     and .SittingRemainingSeconds == 300 and .UsedSeconds >= $bi_used and .UsedSeconds <= $((bi_used + 15))
+     and .BonusSeconds == $bi_bonus"
   playback_info "$alice" kids-check-bi-2
-  check "bi after the break she may play again" 200 '(.MediaSources | length) > 0'
+  check "bi after End break she may play again at once" 200 '(.MediaSources | length) > 0'
+  sleep 1
+  near $(($(bi_lines) - bi_before)) 1 0 "bi End break is logged"
   req "$alice" GET "/Kids/Users/$alice_id/Status"
   check "bi a new sitting starts at zero" 200 '(has("DeniedReason") | not) and .SittingUsedSeconds == 0'
   configure '.SittingBreakMinutes = 15'
@@ -1158,7 +1171,7 @@ check "dg admin marks alice again" 200
 # ea. Info reports API 1.1 and the avatar capability
 req - GET /Kids/Info
 check "ea Info is API 1.1 with avatars" 200 \
-  '.ApiVersion == 1 and .ApiMinorVersion == 1 and (.Features | index("avatar")) != null'
+  '.ApiVersion == 1 and .ApiMinorVersion >= 1 and (.Features | index("avatar")) != null'
 
 # eb. A grown-up sets the avatar, in any case; the kid reads it, and so does the list of kids
 set_alice '{"Avatar": " Lucy "}'
@@ -1213,6 +1226,122 @@ check "eh an unknown user is not found" 404
 req "$alice" GET "/Kids/Admin/LiveTvChannels?userId=$alice_id"
 check "eh a kid cannot ask" 403
 set_alice '{}'
+
+# Bonus undo and End break (feature 13, quickstart.md §2 fa–fk). eh left alice marked with default settings (no
+# allowance) and enforcement off.
+log_file=$(ls -t "$dev"/log/log_*.log | head -1)
+
+# fa. Info reports API 1.2 and both capabilities
+req - GET /Kids/Info
+check "fa Info is API 1.2 with bonusUndo and breakEnd" 200 \
+  '.ApiVersion == 1 and .ApiMinorVersion == 2 and (.Features | index("bonusUndo")) != null
+   and (.Features | index("breakEnd")) != null'
+
+# fb. A bonus answers its id and until when it can be undone
+req "$admin" GET "/Kids/Users/$alice_id/Status"
+bonus_before=$(jq -r .BonusSeconds <<<"$body")
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 30}'
+check "fb a bonus answers BonusId and BonusUndoUntil" 200 \
+  "(.BonusId | type) == \"number\" and has(\"BonusUndoUntil\") and .BonusSeconds == $((bonus_before + 1800))"
+bonus_id=$(jq -r .BonusId <<<"$body")
+
+# fc. The kid lists today's bonuses, with the new one undoable
+req "$alice" GET "/Kids/Users/$alice_id/WatchTime/Bonus"
+check "fc alice lists her bonuses, the new one first and undoable" 200 \
+  ".UndoWindowSeconds == 600 and .Bonuses[0].Id == $bonus_id and .Bonuses[0].Minutes == 30 and .Bonuses[0].CanUndo == true"
+req "$bob_t" GET "/Kids/Users/$alice_id/WatchTime/Bonus"
+check "fc bob cannot list alice's bonuses" 403
+
+# fd. The kid's own token cannot undo it
+req "$alice" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$bonus_id"
+check "fd alice cannot undo her bonus" 403
+req "$alice" GET "/Kids/Users/$alice_id/Status"
+check "fd her bonus is unchanged" 200 ".BonusSeconds == $((bonus_before + 1800))"
+
+# fe. A grown-up undoes it: the bonus is gone and the undo is logged with who gave and who undid it
+undo_lines() { grep -cE "Bonus $1 of 30 min for .* \(given by .?${DEV_ADMIN_USER:-admin}.? at [^)]*\) undone by .?${DEV_ADMIN_USER:-admin}" "$log_file" || true; }
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$bonus_id"
+check "fe admin undoes the bonus" 200 ".BonusSeconds == $bonus_before"
+sleep 1
+near "$(undo_lines "$bonus_id")" 1 0 "fe the undo is logged with who gave and who undid it"
+
+# ff. Undoing again, an unknown id and a non-numeric id
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$bonus_id"
+check "ff undoing the same bonus again is not found" 404 '.title == "No such bonus."'
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/999999999"
+check "ff an unknown bonus is not found" 404
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/abc"
+check "ff a non-numeric bonus id is a bad request" 400
+req "$admin" DELETE /Kids/Users/00000000000000000000000000000001/WatchTime/Bonus/1
+check "ff a user who is not a kid is not found" 404 '.title == "This user is not a kid."'
+
+# fg. Two TVs, two bonuses: undoing one leaves the other
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 5}'
+first_id=$(jq -r .BonusId <<<"$body")
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 7}'
+second_id=$(jq -r .BonusId <<<"$body")
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$first_id"
+check "fg undoing the first bonus keeps the second" 200 ".BonusSeconds == $((bonus_before + 420))"
+req "$admin" GET "/Kids/Users/$alice_id/WatchTime/Bonus"
+check "fg the list has the second and not the first" 200 \
+  "any(.Bonuses[]; .Id == $second_id) and all(.Bonuses[]; .Id != $first_id)"
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$second_id"
+
+# fh. A grant holder on alice's TV gives and undoes a bonus; it is recorded as given with a parent grant
+verify "$alice_a" kids-check-A "$known"
+undo_grant=$(jq -r .Grant <<<"$body")
+req_dev "$alice_a" kids-check-A POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 15}' "$undo_grant"
+check "fh a grant holder gives a bonus" 200 '(.BonusId | type) == "number"'
+grant_bonus=$(jq -r .BonusId <<<"$body")
+req "$alice" GET "/Kids/Users/$alice_id/WatchTime/Bonus"
+check "fh the list says it came with a parent grant" 200 \
+  "any(.Bonuses[]; .Id == $grant_bonus and .GrantedBy == \"alice with a parent grant\")"
+req_dev "$alice_a" kids-check-A DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$grant_bonus" '' "$undo_grant"
+check "fh the grant holder undoes it" 200 ".BonusSeconds == $bonus_before"
+
+# fi. With time used and enforcement on, undoing the bonus that kept her going brings time's up back
+set_alice '{"DailyAllowanceMinutes": 1}'
+if [[ $(date -d '-1 hour' +%F) == $(date +%F) ]]; then
+  undo_started=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+else
+  undo_started=$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)
+fi
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+req "$alice" POST "/Kids/Users/$alice_id/WatchTime/Report" \
+  "{\"Segments\":[{\"Id\":\"$(new_id)\",\"StartedAt\":\"$undo_started\",\"Seconds\":120}]}"
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Bonus" '{"Minutes": 5}'
+check "fi with a 5-minute bonus her time is not up" 200 '.TimeUp == false'
+time_bonus=$(jq -r .BonusId <<<"$body")
+configure '.EnforcementEnabled = true'
+playback_info "$alice" kids-check-tv
+check "fi she may play" 200 '(.MediaSources | length) > 0'
+req "$admin" DELETE "/Kids/Users/$alice_id/WatchTime/Bonus/$time_bonus"
+check "fi undoing the bonus makes time up again" 200 '.TimeUp == true and .DeniedReason == "timeUp"'
+playback_info "$alice" kids-check-tv
+check "fi PlaybackInfo is NotAllowed at once" 200 '.ErrorCode == "NotAllowed"'
+configure '.EnforcementEnabled = false'
+
+# fj. End break when she is not in a break changes nothing and logs nothing
+break_lines() { grep -cE "Break of .* ended by" "$log_file" || true; }
+lines_before=$(break_lines)
+req "$admin" GET "/Kids/Users/$alice_id/Status"
+used_before=$(jq -r .UsedSeconds <<<"$body")
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Break/End"
+check "fj End break with no break answers the unchanged status" 200 \
+  ".UsedSeconds == $used_before and .TimeUp == true and (has(\"BreakRemainingSeconds\") | not)"
+sleep 1
+near $(($(break_lines) - lines_before)) 0 0 "fj nothing is logged"
+
+# fk. Only grown-ups, only kids
+req "$alice" POST "/Kids/Users/$alice_id/WatchTime/Break/End"
+check "fk alice cannot end her break" 403
+req "$admin" POST /Kids/Users/00000000000000000000000000000001/WatchTime/Break/End
+check "fk End break for a user who is not a kid is not found" 404
+
+# Leave alice with no allowance and today's screen time cleared
+set_alice '{}'
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "fk alice is left with today cleared" 200 '.UsedSeconds == 0 and .BonusSeconds == 0'
 
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"

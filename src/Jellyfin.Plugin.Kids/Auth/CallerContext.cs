@@ -38,6 +38,12 @@ public sealed record CallerContext(
     public string LogName => IsApiKey ? "API key" : UserName ?? UserId.ToString("N");
 
     /// <summary>
+    /// Gets how a grown-up's change is attributed: <see cref="LogName"/> for administrators and API keys, and
+    /// "{name} with a parent grant" otherwise, since a grant rides on the kid's own token (features 7 and 13).
+    /// </summary>
+    public string ActorName => IsAdmin ? LogName : LogName + " with a parent grant";
+
+    /// <summary>
     /// Reads the caller from Jellyfin's authorization context (a public API, unlike the internal claim names),
     /// without a device or a grant.
     /// </summary>

@@ -230,11 +230,11 @@ public sealed class UsageService : IDisposable
     /// <summary>
     /// Adds bonus minutes to a kid's current day. Access rules are the caller's job.
     /// </summary>
-    /// <param name="caller">Who adds them, recorded by name.</param>
+    /// <param name="caller">Who adds them, recorded as <see cref="CallerContext.ActorName"/>.</param>
     /// <param name="userId">The kid.</param>
     /// <param name="minutes">The minutes, 1–240.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The new status, the errors keyed <c>Minutes</c>, or not a kid.</returns>
+    /// <returns>The new status with the bonus and until when it can be undone, the errors keyed <c>Minutes</c>, or not a kid.</returns>
     public async Task<UsageResult> AddBonusAsync(CallerContext caller, Guid userId, int? minutes, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(caller);
@@ -250,11 +250,83 @@ public sealed class UsageService : IDisposable
         }
 
         var now = _time.GetUtcNow();
-        var day = DayClock.Format(CurrentDayClock().DayOf(now));
-        await _store.AddBonusAsync(userId, day, minutes.Value, caller.LogName, now, cancellationToken).ConfigureAwait(false);
+        var clock = CurrentDayClock();
+        var day = DayClock.Format(clock.DayOf(now));
+        var id = await _store.AddBonusAsync(userId, day, minutes.Value, caller.ActorName, now, cancellationToken).ConfigureAwait(false);
         UsageChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
         var status = await StatusAsync(userId, profile.Settings.DailyAllowanceMinutes, cancellationToken).ConfigureAwait(false);
-        return new UsageResult(UsageOutcome.Saved, status);
+        var bonus = new StoredBonus(id, day, minutes.Value, caller.ActorName, now);
+        return new UsageResult(UsageOutcome.Saved, status, Bonus: bonus, BonusUndoUntil: BonusUndo.UndoUntil(now, clock.NextStart(now)));
+    }
+
+    /// <summary>
+    /// Gets a kid's bonuses of the current day (feature 13). Access rules are the caller's job.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Today's bonuses, newest first, or null if the user is not a kid.</returns>
+    public async Task<TodayBonuses?> ListBonusesAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _profiles.GetAsync(userId, cancellationToken).ConfigureAwait(false);
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var now = _time.GetUtcNow();
+        var clock = CurrentDayClock();
+        var today = clock.DayOf(now);
+        var key = DayClock.Format(today);
+        var bonuses = await _store.ListBonusesAsync(userId, key, cancellationToken).ConfigureAwait(false);
+        return new TodayBonuses(
+            today,
+            now,
+            bonuses.Select(b =>
+            {
+                var until = BonusUndo.UndoUntil(b.CreatedAt, clock.NextStart(b.CreatedAt));
+                return new BonusState(b, until, BonusUndo.CanUndo(b.Day, key, until, now));
+            }).ToList());
+    }
+
+    /// <summary>
+    /// Undoes one of a kid's bonuses (feature 13): only today's, and only within <see cref="BonusUndo.Window"/> of
+    /// when it was given. Access rules are the caller's job.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="bonusId">The bonus id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The new status with the undone bonus; not a kid; not found; or too late (with the bonus).</returns>
+    public async Task<UsageResult> UndoBonusAsync(Guid userId, long bonusId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _profiles.GetAsync(userId, cancellationToken).ConfigureAwait(false);
+        if (profile is null)
+        {
+            return new UsageResult(UsageOutcome.NotAKid);
+        }
+
+        var bonus = await _store.GetBonusAsync(userId, bonusId, cancellationToken).ConfigureAwait(false);
+        if (bonus is null)
+        {
+            return new UsageResult(UsageOutcome.NotFound);
+        }
+
+        var now = _time.GetUtcNow();
+        var clock = CurrentDayClock();
+        var until = BonusUndo.UndoUntil(bonus.CreatedAt, clock.NextStart(bonus.CreatedAt));
+        if (!BonusUndo.CanUndo(bonus.Day, DayClock.Format(clock.DayOf(now)), until, now))
+        {
+            return new UsageResult(UsageOutcome.TooLate, Bonus: bonus);
+        }
+
+        // Two undos of the same id: the one that deletes nothing is told it is gone
+        if (!await _store.DeleteBonusAsync(userId, bonusId, cancellationToken).ConfigureAwait(false))
+        {
+            return new UsageResult(UsageOutcome.NotFound);
+        }
+
+        UsageChanged?.Invoke(this, new GenericEventArgs<Guid>(userId));
+        var status = await StatusAsync(userId, profile.Settings.DailyAllowanceMinutes, cancellationToken).ConfigureAwait(false);
+        return new UsageResult(UsageOutcome.Saved, status, Bonus: bonus);
     }
 
     /// <summary>
