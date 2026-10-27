@@ -693,6 +693,8 @@ per-kid `SessionLimitMinutes` that each TV counts locally, so enforcement (row 4
 choices and the live TV state, and adds Reset today. Spec `012-kids-avatar` (2026-10-24, plugin 0.0.8.0, named after
 its branch) adds kid avatars to the profile and the list of kids (API 1.1, `ApiMinorVersion`), warns on the dashboard
 when Jellyfin's parental control hides a picked live TV channel from a kid, and names Peke for Jellyfin as the client.
+Spec `013-bonus-undo-break` (2026-10-26, plugin 0.0.9.0) gives bonuses ids and lets a grown-up undo one within 10
+minutes, and end the break after the sitting limit early, for the Peke TV app's "Add time" widget (API 1.2).
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.

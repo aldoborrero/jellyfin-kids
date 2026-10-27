@@ -19,6 +19,8 @@ public class KidStatusDtoTests
         Assert.False(dto.Enforced);
         Assert.Null(dto.DeniedReason);
         Assert.Null(dto.SittingLimitSeconds);
+        Assert.Null(dto.BonusId);
+        Assert.Null(dto.BonusUndoUntil);
     }
 
     [Fact]

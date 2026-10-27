@@ -114,12 +114,127 @@ public class AllowanceController : ControllerBase
         }
 
         var result = await _usage.AddBonusAsync(caller, userId, request.Minutes, cancellationToken).ConfigureAwait(false);
-        if (result.Outcome == UsageOutcome.Saved)
+        if (result.Outcome != UsageOutcome.Saved)
         {
-            _logger.LogInformation("Bonus of {Minutes} min for {UserId} by {Caller}", request.Minutes, userId, caller.LogName);
+            return await ToResponseAsync(userId, result).ConfigureAwait(false);
+        }
+
+        _logger.LogInformation("Bonus {BonusId} of {Minutes} min for {UserId} by {Caller}", result.Bonus!.Id, request.Minutes, userId, caller.ActorName);
+        var answer = await ToResponseAsync(userId, result).ConfigureAwait(false);
+        return answer.Value! with { BonusId = result.Bonus.Id, BonusUndoUntil = result.BonusUndoUntil?.UtcDateTime };
+    }
+
+    /// <summary>
+    /// Lists a kid's bonuses of the current day, newest first, with whether each can still be undone (feature 13).
+    /// </summary>
+    /// <param name="userId">The kid's user id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">Today's bonuses.</response>
+    /// <response code="403">The caller is neither the kid nor an administrator.</response>
+    /// <response code="404">The user is not a kid.</response>
+    /// <returns>The bonuses, or a refusal.</returns>
+    [HttpGet("WatchTime/Bonus")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BonusListDto>> GetBonuses([FromRoute] Guid userId, CancellationToken cancellationToken)
+    {
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        if (!ProfileAccess.CanRead(caller, userId))
+        {
+            return Forbid();
+        }
+
+        var today = await _usage.ListBonusesAsync(userId, cancellationToken).ConfigureAwait(false);
+        return today is null ? NotAKid() : BonusListDto.From(today);
+    }
+
+    /// <summary>
+    /// Undoes one of today's bonuses, at most 10 minutes after it was given (feature 13). Logged.
+    /// </summary>
+    /// <param name="userId">The kid's user id.</param>
+    /// <param name="bonusId">The bonus id, from the answer to the bonus or the list.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">The kid's new status; time may be up again.</response>
+    /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
+    /// <response code="404">The user is not a kid, or has no bonus with that id (never given, or undone already).</response>
+    /// <response code="409">The bonus is from an earlier day or older than the undo window.</response>
+    /// <returns>The new status, or a refusal.</returns>
+    [HttpDelete("WatchTime/Bonus/{bonusId}")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<KidStatusDto>> DeleteBonus([FromRoute] Guid userId, [FromRoute] long bonusId, CancellationToken cancellationToken)
+    {
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        if (!ProfileAccess.CanMutate(caller))
+        {
+            return Forbid();
+        }
+
+        var result = await _usage.UndoBonusAsync(userId, bonusId, cancellationToken).ConfigureAwait(false);
+        switch (result.Outcome)
+        {
+            case UsageOutcome.NotFound:
+                return NotFound(new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = "No such bonus." });
+            case UsageOutcome.TooLate:
+                return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "This bonus can no longer be undone." });
+            case UsageOutcome.Saved:
+                var bonus = result.Bonus!;
+                _logger.LogInformation(
+                    "Bonus {BonusId} of {Minutes} min for {UserId} (given by {GrantedBy} at {CreatedAt:O}) undone by {Caller}",
+                    bonus.Id,
+                    bonus.Minutes,
+                    userId,
+                    bonus.GrantedBy,
+                    bonus.CreatedAt,
+                    caller.ActorName);
+                break;
         }
 
         return await ToResponseAsync(userId, result).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Ends a kid's break after the sitting limit, so they may play again at once (feature 13). Used time and bonus
+    /// stay; the next sitting starts from zero at the next playback. When the kid is not in a break nothing changes.
+    /// Logged when a break was ended.
+    /// </summary>
+    /// <param name="userId">The kid's user id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <response code="200">The kid's new status.</response>
+    /// <response code="403">The caller is neither an administrator nor a parent grant holder.</response>
+    /// <response code="404">The user is not a kid.</response>
+    /// <returns>The new status, or a refusal.</returns>
+    [HttpPost("WatchTime/Break/End")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<KidStatusDto>> PostEndBreak([FromRoute] Guid userId, CancellationToken cancellationToken)
+    {
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        if (!ProfileAccess.CanMutate(caller))
+        {
+            return Forbid();
+        }
+
+        if (await _usage.GetStatusAsync(userId, cancellationToken).ConfigureAwait(false) is null)
+        {
+            return NotAKid();
+        }
+
+        if (_enforcement.EndBreak(userId, _time.GetUtcNow()) is { } left)
+        {
+            _logger.LogInformation("Break of {UserId} ended by {Caller} with {Seconds} s left", userId, caller.ActorName, (long)Math.Ceiling(left.TotalSeconds));
+        }
+
+        // Read after the change, so the answer already follows it
+        var status = await _usage.GetStatusAsync(userId, cancellationToken).ConfigureAwait(false);
+        return status is null ? NotAKid() : KidStatusDto.From(status, _enforcement.Describe(userId, _time.GetUtcNow()));
     }
 
     /// <summary>
@@ -156,7 +271,7 @@ public class AllowanceController : ControllerBase
             "Screen time of {UserId} reset for {Day} by {Caller}: {UsedMinutes} min used and {BonusMinutes} min bonus cleared",
             userId,
             reset.Day,
-            caller.IsAdmin ? caller.LogName : caller.LogName + " with a parent grant",
+            caller.ActorName,
             reset.UsedMs / 60_000,
             reset.BonusMinutes);
 

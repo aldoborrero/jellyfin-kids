@@ -1,9 +1,10 @@
 // The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it), picked live TV
-// channels that Jellyfin hides from them included; today's screen time with the server time and "Reset today"; the
-// daily allowance and the sitting limit, each with an explicit "No limit", and the household break; bonus minutes; the
-// allowed hours from Jellyfin (read-only); the avatar; search, autoplay and its limit; home sections (order and
-// visibility); the picked collections and playlists; and the live TV channels the kid may watch. Saves with the loaded
-// revision; a conflict never overwrites. Bonus minutes and Reset today apply straight away, apart from the save. Every
+// channels that Jellyfin hides from them included; today's screen time with the server time, "Reset today" and, during
+// a break, "End break"; the daily allowance and the sitting limit, each with an explicit "No limit", and the household
+// break; bonus minutes and today's bonuses, with Undo inside their window; the allowed hours from Jellyfin
+// (read-only); the avatar; search, autoplay and its limit; home sections (order and visibility); the picked
+// collections and playlists; and the live TV channels the kid may watch. Saves with the loaded revision; a conflict
+// never overwrites. Bonus minutes, Undo, End break and Reset today apply straight away, apart from the save. Every
 // name is inserted as text; successes are confirmed with a toast.
 
 const sectionNames = {
@@ -758,6 +759,9 @@ export default function (view, params) {
     const bonusAdd = view.querySelector('.kidsBonusAdd');
     const bonusError = view.querySelector('.kidsBonusError');
     const resetButton = view.querySelector('.kidsReset');
+    const endBreakButton = view.querySelector('.kidsEndBreak');
+    const bonusList = view.querySelector('.kidsBonusList');
+    let clock = null; // the server's clock from the last status, for the bonus times
 
     function setBonusError(text) {
         bonusError.textContent = text || '';
@@ -765,12 +769,85 @@ export default function (view, params) {
     }
 
     function renderStatus(status) {
-        const clock = serverClock(status, config ? Number(config.DayStartsAtHour) : Number.NaN);
+        clock = serverClock(status, config ? Number(config.DayStartsAtHour) : Number.NaN);
         usageLine.textContent = usageText(status);
         setLine(view.querySelector('.kidsSittingLine'), sittingText(status));
         setLine(view.querySelector('.kidsDeniedLine'), deniedText(status, clock));
         view.querySelector('.kidsAppOnlyLine').hidden = status.Enforced !== false;
         setLine(view.querySelector('.kidsServerTimeLine'), clock ? 'Server time: ' + clock.now + ' (' + clock.label + ').' : null);
+        endBreakButton.hidden = !(status.BreakRemainingSeconds > 0);
+        // Every change to the status can change today's bonuses (add, undo, reset)
+        loadBonuses();
+    }
+
+    function timeText(value) {
+        return clock ? clock.format(value) : new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Today's bonuses (feature 13), newest first, with Undo while the server still accepts it
+    function renderBonuses(list) {
+        bonusList.replaceChildren();
+        const bonuses = (list && list.Bonuses) || [];
+        bonusList.hidden = bonuses.length === 0;
+        if (bonuses.length === 0) {
+            return;
+        }
+
+        bonusList.append(element('p', 'fieldDescription', 'Today\'s bonuses'));
+        for (const bonus of bonuses) {
+            const line = element('p', 'fieldDescription kidsBonusItem',
+                bonus.Minutes + ' min at ' + timeText(bonus.CreatedAt) + ' by ' + bonus.GrantedBy + (bonus.CanUndo ? '' : ' · can no longer be undone'));
+            if (bonus.CanUndo) {
+                const undo = element('button', 'button-link kidsBonusUndo', 'Undo');
+                undo.type = 'button';
+                undo.setAttribute('is', 'emby-button');
+                undo.setAttribute('aria-label', 'Undo ' + bonus.Minutes + ' min bonus');
+                undo.addEventListener('click', () => undoBonus(bonus, undo));
+                line.append(undo);
+            }
+
+            bonusList.append(line);
+        }
+    }
+
+    function loadBonuses() {
+        return request('GET', 'Kids/Users/' + userId + '/WatchTime/Bonus')
+            .then(renderBonuses)
+            .catch(() => renderBonuses(null));
+    }
+
+    function undoBonus(bonus, button) {
+        button.disabled = true;
+        request('DELETE', 'Kids/Users/' + userId + '/WatchTime/Bonus/' + bonus.Id)
+            .then((status) => {
+                renderStatus(status);
+                toast('Undid the ' + bonus.Minutes + ' min bonus');
+            })
+            .catch((response) => {
+                const code = response && response.status;
+                if (code === 409) {
+                    Dashboard.alert({ title: 'Kids', message: 'This bonus can no longer be undone.' });
+                } else if (code !== 404) {
+                    // 404: someone else undid it already; the reload shows it
+                    Dashboard.alert({ title: 'Kids', message: 'Could not undo the bonus.' });
+                }
+
+                return loadUsage();
+            });
+    }
+
+    function endBreak() {
+        const name = user ? user.Name : 'this kid';
+        endBreakButton.disabled = true;
+        request('POST', 'Kids/Users/' + userId + '/WatchTime/Break/End')
+            .then((status) => {
+                renderStatus(status);
+                toast(name + '\'s break was ended');
+            })
+            .catch(() => Dashboard.alert({ title: 'Kids', message: 'Could not end the break.' }))
+            .finally(() => {
+                endBreakButton.disabled = false;
+            });
     }
 
     function loadUsage() {
@@ -779,6 +856,7 @@ export default function (view, params) {
         setLine(view.querySelector('.kidsDeniedLine'), null);
         view.querySelector('.kidsAppOnlyLine').hidden = true;
         setLine(view.querySelector('.kidsServerTimeLine'), null);
+        endBreakButton.hidden = true;
         // Never show 0 when the status could not be read
         return request('GET', 'Kids/Users/' + userId + '/Status')
             .then(renderStatus)
@@ -949,6 +1027,7 @@ export default function (view, params) {
         }
     });
     resetButton.addEventListener('click', resetToday);
+    endBreakButton.addEventListener('click', endBreak);
     autoplayInput.addEventListener('change', renderCap);
     avatarSelect.addEventListener('change', renderAvatar);
     capInput.addEventListener('input', renderCap);

@@ -17,12 +17,12 @@ public record KidsInfo(string PluginVersion, int ApiVersion, int ApiMinorVersion
     /// <summary>The client API version.</summary>
     public const int CurrentApiVersion = 1;
 
-    /// <summary>The client API minor version: 1 added avatars (feature 12).</summary>
-    public const int CurrentApiMinorVersion = 1;
+    /// <summary>The client API minor version: 1 added avatars (feature 12), 2 bonus undo and End break (feature 13).</summary>
+    public const int CurrentApiMinorVersion = 2;
 
     /// <summary>
     /// Gets the capabilities of this plugin version, in the order they were added. Null fields are omitted from
     /// answers, so clients rely on these names (for example <c>sessionLimit</c>) to know a field is supported.
     /// </summary>
-    public static IReadOnlyList<string> SupportedFeatures { get; } = ["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset", "avatar"];
+    public static IReadOnlyList<string> SupportedFeatures { get; } = ["profiles", "parentLock", "allowance", "sessionLimit", "enforcement", "sitting", "liveTv", "watchTimeReset", "avatar", "bonusUndo", "breakEnd"];
 }

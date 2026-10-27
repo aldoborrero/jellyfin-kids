@@ -27,7 +27,7 @@ public sealed class KidsDatabase : IDisposable
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
     /// </summary>
-    public const long SchemaVersion = 4;
+    public const long SchemaVersion = 5;
 
     // Each step moves the schema from version (index) to version (index + 1)
     private static readonly string[] _migrations =
@@ -64,6 +64,17 @@ public sealed class KidsDatabase : IDisposable
         // Settings live in the JSON, so this step only gives every existing profile the new key, set to null
         """
         UPDATE kid_profile SET settings = json_insert(settings, '$.SessionLimitMinutes', NULL);
+        """,
+        // Bonus ids are part of the API from feature 13 (undo): AUTOINCREMENT so an undone or reset id is never reused
+        """
+        CREATE TABLE bonus_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, day TEXT NOT NULL,
+          minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 240), granted_by TEXT NOT NULL, created_at TEXT NOT NULL);
+        INSERT INTO bonus_new (id, user_id, day, minutes, granted_by, created_at)
+          SELECT id, user_id, day, minutes, granted_by, created_at FROM bonus;
+        DROP TABLE bonus;
+        ALTER TABLE bonus_new RENAME TO bonus;
+        CREATE INDEX bonus_user_day ON bonus (user_id, day);
         """
     ];
 

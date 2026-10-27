@@ -101,6 +101,48 @@ public sealed class UsageStoreTests : IDisposable
         Assert.Equal(0, await _store.GetBonusMinutesAsync(_alice, "2026-10-18"));
     }
 
+    // Bonus ids (feature 13)
+    [Fact]
+    public async Task Bonus_IdsGrowAndListIsPerKidAndDayNewestFirst()
+    {
+        var first = await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+        var second = await _store.AddBonusAsync(_alice, "2026-10-18", 5, "mum", _now.AddMinutes(1));
+        await _store.AddBonusAsync(_alice, "2026-10-17", 30, "admin", _now);
+        await _store.AddBonusAsync(_bob, "2026-10-18", 30, "admin", _now);
+
+        var list = await _store.ListBonusesAsync(_alice, "2026-10-18");
+
+        Assert.True(second > first);
+        Assert.Equal([second, first], list.Select(b => b.Id));
+        Assert.Equal(new StoredBonus(second, "2026-10-18", 5, "mum", _now.AddMinutes(1)), list[0]);
+    }
+
+    [Fact]
+    public async Task Bonus_DeleteRemovesOnlyThatKidsRowOnce()
+    {
+        var alices = await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+        var bobs = await _store.AddBonusAsync(_bob, "2026-10-18", 15, "admin", _now);
+
+        Assert.False(await _store.DeleteBonusAsync(_alice, bobs));
+        Assert.True(await _store.DeleteBonusAsync(_alice, alices));
+        Assert.False(await _store.DeleteBonusAsync(_alice, alices));
+        Assert.Null(await _store.GetBonusAsync(_alice, alices));
+        Assert.NotNull(await _store.GetBonusAsync(_bob, bobs));
+    }
+
+    [Fact]
+    public async Task Bonus_IdOfTheNewestRowIsNotReusedAfterADeleteOrAReset()
+    {
+        var undone = await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+        await _store.DeleteBonusAsync(_alice, undone);
+        var next = await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+        await _store.ResetDayAsync(_alice, "2026-10-18");
+        var afterReset = await _store.AddBonusAsync(_alice, "2026-10-18", 15, "admin", _now);
+
+        Assert.True(next > undone);
+        Assert.True(afterReset > next);
+    }
+
     [Fact]
     public async Task PurgeUser_DeletesOnlyThatUser()
     {

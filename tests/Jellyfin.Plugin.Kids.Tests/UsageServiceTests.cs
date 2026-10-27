@@ -18,6 +18,7 @@ public sealed class UsageServiceTests : IDisposable
 {
     private static readonly CallerContext _admin = new(Guid.NewGuid(), IsAdmin: true, IsApiKey: false, UserName: "admin");
     private static readonly CallerContext _apiKey = new(Guid.Empty, IsAdmin: true, IsApiKey: true);
+    private static readonly CallerContext _grant = new(Guid.NewGuid(), IsAdmin: false, IsApiKey: false, HasGrant: true, UserName: "alice");
 
     private readonly TempFolder _folder = new();
     private readonly KidsDatabase _db;
@@ -249,6 +250,148 @@ public sealed class UsageServiceTests : IDisposable
         var result = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
 
         Assert.Equal(UsageOutcome.NotAKid, result.Outcome);
+    }
+
+    // Bonus ids and undo (feature 13)
+    [Fact]
+    public async Task Bonus_ReturnsItsIdAndUndoWindow()
+    {
+        await MarkAsync(_alice, 30);
+
+        var first = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+        var second = await _service.AddBonusAsync(_admin, _alice, 5, TestContext.Current.CancellationToken);
+
+        Assert.Equal(15, first.Bonus!.Minutes);
+        Assert.True(second.Bonus!.Id > first.Bonus.Id);
+        Assert.Equal(_time.Now.AddMinutes(10), first.BonusUndoUntil);
+    }
+
+    [Fact]
+    public async Task Bonus_ThroughAGrant_IsRecordedAsSuch()
+    {
+        await MarkAsync(_alice, 30);
+
+        await _service.AddBonusAsync(_grant, _alice, 15, TestContext.Current.CancellationToken);
+
+        Assert.Equal("alice with a parent grant", ReadScalar<string>("SELECT granted_by FROM bonus"));
+    }
+
+    [Fact]
+    public async Task Bonus_JustBeforeTheDayEnds_CanBeUndoneUntilThenOnly()
+    {
+        await MarkAsync(_alice, 30);
+        _time.Now = new DateTimeOffset(2026, 10, 18, 23, 55, 0, TimeSpan.Zero);
+
+        var result = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new DateTimeOffset(2026, 10, 19, 0, 0, 0, TimeSpan.Zero), result.BonusUndoUntil);
+        _time.Now = new DateTimeOffset(2026, 10, 19, 0, 1, 0, TimeSpan.Zero);
+        var undo = await _service.UndoBonusAsync(_alice, result.Bonus!.Id, TestContext.Current.CancellationToken);
+        Assert.Equal(UsageOutcome.TooLate, undo.Outcome);
+    }
+
+    [Fact]
+    public async Task ListBonuses_IsTodaysNewestFirstWithUndoState()
+    {
+        await MarkAsync(_alice, 30);
+        await _store.AddBonusAsync(_alice, "2026-10-17", 10, "admin", _time.Now.AddDays(-1));
+        var old = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+        _time.Advance(TimeSpan.FromMinutes(11));
+        var recent = await _service.AddBonusAsync(_grant, _alice, 5, TestContext.Current.CancellationToken);
+        await _service.AddBonusAsync(_admin, _bob, 20, TestContext.Current.CancellationToken);
+
+        var today = await _service.ListBonusesAsync(_alice, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(today);
+        Assert.Equal(new DateOnly(2026, 10, 18), today.Date);
+        Assert.Equal([recent.Bonus!.Id, old.Bonus!.Id], today.Bonuses.Select(b => b.Bonus.Id));
+        Assert.True(today.Bonuses[0].CanUndo);
+        Assert.Equal("alice with a parent grant", today.Bonuses[0].Bonus.GrantedBy);
+        Assert.False(today.Bonuses[1].CanUndo);
+        Assert.Equal(old.Bonus.CreatedAt.AddMinutes(10), today.Bonuses[1].UndoUntil);
+    }
+
+    [Fact]
+    public async Task ListBonuses_NotAKid_IsNull()
+    {
+        Assert.Null(await _service.ListBonusesAsync(_alice, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Undo_InsideTheWindow_RemovesOnlyThatBonusAndReturnsTheStatus()
+    {
+        await MarkAsync(_alice, 30);
+        var keep = await _service.AddBonusAsync(_admin, _alice, 5, TestContext.Current.CancellationToken);
+        var wrong = await _service.AddBonusAsync(_admin, _alice, 60, TestContext.Current.CancellationToken);
+        var changed = 0;
+        _service.UsageChanged += (_, _) => changed++;
+        _time.Advance(TimeSpan.FromMinutes(10));
+
+        var result = await _service.UndoBonusAsync(_alice, wrong.Bonus!.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(UsageOutcome.Saved, result.Outcome);
+        Assert.Equal(60, result.Bonus!.Minutes);
+        Assert.Equal(300, result.Status!.BonusSeconds);
+        Assert.Equal(5, await _store.GetBonusMinutesAsync(_alice, Today));
+        Assert.NotNull(await _store.GetBonusAsync(_alice, keep.Bonus!.Id));
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public async Task Undo_AfterTheWindow_IsTooLateAndKeepsTheBonus()
+    {
+        await MarkAsync(_alice, 30);
+        var bonus = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+        _time.Advance(TimeSpan.FromMinutes(10).Add(TimeSpan.FromMilliseconds(1)));
+
+        var result = await _service.UndoBonusAsync(_alice, bonus.Bonus!.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(UsageOutcome.TooLate, result.Outcome);
+        Assert.Equal(15, await _store.GetBonusMinutesAsync(_alice, Today));
+    }
+
+    [Fact]
+    public async Task Undo_OfAnEarlierDay_IsTooLate()
+    {
+        await MarkAsync(_alice, 30);
+        var id = await _store.AddBonusAsync(_alice, "2026-10-17", 10, "admin", _time.Now.AddMinutes(-1));
+
+        var result = await _service.UndoBonusAsync(_alice, id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(UsageOutcome.TooLate, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Undo_TwiceOrOfAnotherKidsBonus_IsNotFound()
+    {
+        await MarkAsync(_alice, 30);
+        await MarkAsync(_bob, 30);
+        var alices = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+        var bobs = await _service.AddBonusAsync(_admin, _bob, 15, TestContext.Current.CancellationToken);
+
+        Assert.Equal(UsageOutcome.NotFound, (await _service.UndoBonusAsync(_alice, bobs.Bonus!.Id, TestContext.Current.CancellationToken)).Outcome);
+        Assert.Equal(UsageOutcome.Saved, (await _service.UndoBonusAsync(_alice, alices.Bonus!.Id, TestContext.Current.CancellationToken)).Outcome);
+        Assert.Equal(UsageOutcome.NotFound, (await _service.UndoBonusAsync(_alice, alices.Bonus.Id, TestContext.Current.CancellationToken)).Outcome);
+        Assert.Equal(15, await _store.GetBonusMinutesAsync(_bob, Today));
+    }
+
+    [Fact]
+    public async Task Undo_OfAPartlyUsedBonus_CanMakeTimeUpAgain()
+    {
+        await MarkAsync(_alice, 30);
+        await _store.AddUsageAsync(new Dictionary<(Guid UserId, string Day), long> { [(_alice, Today)] = 35 * 60_000 });
+        var bonus = await _service.AddBonusAsync(_admin, _alice, 15, TestContext.Current.CancellationToken);
+        Assert.False(bonus.Status!.TimeUp);
+
+        var result = await _service.UndoBonusAsync(_alice, bonus.Bonus!.Id, TestContext.Current.CancellationToken);
+
+        Assert.True(result.Status!.TimeUp);
+    }
+
+    [Fact]
+    public async Task Undo_NotAKid_IsNotAKid()
+    {
+        Assert.Equal(UsageOutcome.NotAKid, (await _service.UndoBonusAsync(_alice, 1, TestContext.Current.CancellationToken)).Outcome);
     }
 
     // Reports (US5)

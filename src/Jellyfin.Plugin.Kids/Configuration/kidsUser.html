@@ -37,8 +37,12 @@
             #KidsUserPage .kidsWarning .button-link { margin-left: 0.5em; }
             #KidsUserPage .kidsHealthList { margin: 0 0 1.5em; }
             #KidsUserPage .kidsHealthList:empty { display: none; }
-            #KidsUserPage .kidsStatusActions { margin: 0.75em 0 0; }
+            #KidsUserPage .kidsStatusActions { margin: 0.75em 0 0; display: flex; flex-wrap: wrap; gap: 0.75em; }
             #KidsUserPage .kidsStatusActions .emby-button { margin: 0; }
+            #KidsUserPage .kidsStatusActions .emby-button[hidden] { display: none; }
+            #KidsUserPage .kidsBonusList[hidden] { display: none; }
+            #KidsUserPage .kidsBonusList p { margin: 0.3em 0 0; }
+            #KidsUserPage .kidsBonusList .button-link { margin: 0 0 0 0.5em; padding: 0; }
             #KidsUserPage .kidsLimitBlock { margin-bottom: 1.8em; }
             #KidsUserPage .kidsLimitBlock .checkboxContainer { margin-bottom: 0.5em; }
             #KidsUserPage .kidsSchedule { margin: 0 0 0.5em; padding-left: 1.2em; }
@@ -93,6 +97,9 @@
                                     <button is="emby-button" type="button" class="raised button-delete kidsReset">
                                         <span>Reset today</span>
                                     </button>
+                                    <button is="emby-button" type="button" class="raised kidsEndBreak" hidden>
+                                        <span>End break</span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -136,6 +143,7 @@
                                 </div>
                                 <div class="fieldDescription">Extra minutes on top of today's allowance, added straight away.</div>
                                 <div class="fieldDescription kidsBonusError" role="status" aria-live="polite" hidden></div>
+                                <div class="kidsBonusList" role="status" aria-live="polite" hidden></div>
                             </div>
                         </div>
 

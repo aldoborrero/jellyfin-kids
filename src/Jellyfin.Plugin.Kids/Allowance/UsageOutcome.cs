@@ -12,5 +12,11 @@ public enum UsageOutcome
     Invalid,
 
     /// <summary>The user is not a kid; nothing changed.</summary>
-    NotAKid
+    NotAKid,
+
+    /// <summary>The kid has no bonus with that id (feature 13); nothing changed.</summary>
+    NotFound,
+
+    /// <summary>The bonus can no longer be undone (feature 13); nothing changed.</summary>
+    TooLate
 }

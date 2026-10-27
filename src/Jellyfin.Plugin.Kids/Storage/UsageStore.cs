@@ -14,7 +14,8 @@ namespace Jellyfin.Plugin.Kids.Storage;
 /// </summary>
 /// <remarks>
 /// Usage only grows: the only write to <c>usage_day.used_ms</c> adds a positive amount. Rows are deleted only by
-/// pruning, a purge, the user being deleted or a parent's reset of the current day (feature 7).
+/// pruning, a purge, the user being deleted, a parent's reset of the current day (feature 7) or the undo of a bonus
+/// (feature 13).
 /// </remarks>
 public sealed class UsageStore
 {
@@ -98,8 +99,8 @@ public sealed class UsageStore
     /// <param name="grantedBy">Who added them: a user name or "API key".</param>
     /// <param name="createdAt">When.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that completes when the bonus is stored.</returns>
-    public Task AddBonusAsync(Guid userId, string day, int minutes, string grantedBy, DateTimeOffset createdAt, CancellationToken cancellationToken = default)
+    /// <returns>The new bonus's id, never used before (schema 5).</returns>
+    public Task<long> AddBonusAsync(Guid userId, string day, int minutes, string grantedBy, DateTimeOffset createdAt, CancellationToken cancellationToken = default)
     {
         EnsureUsable();
         return _database.WriteAsync(
@@ -108,16 +109,64 @@ public sealed class UsageStore
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
                 command.CommandText = """
-                    INSERT INTO bonus (user_id, day, minutes, granted_by, created_at) VALUES ($id, $day, $minutes, $by, $at)
+                    INSERT INTO bonus (user_id, day, minutes, granted_by, created_at) VALUES ($id, $day, $minutes, $by, $at);
+                    SELECT last_insert_rowid();
                     """;
                 command.Parameters.AddWithValue("$id", Key(userId));
                 command.Parameters.AddWithValue("$day", day);
                 command.Parameters.AddWithValue("$minutes", minutes);
                 command.Parameters.AddWithValue("$by", grantedBy);
                 command.Parameters.AddWithValue("$at", Timestamp(createdAt));
-                return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                return (long)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets a kid's bonuses for a day, newest first.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="day">The day, <c>yyyy-MM-dd</c>.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The bonuses; empty when there are none.</returns>
+    public Task<IReadOnlyList<StoredBonus>> ListBonusesAsync(Guid userId, string day, CancellationToken cancellationToken = default)
+        => ReadBonusesAsync("user_id = $id AND day = $value ORDER BY id DESC", userId, day, cancellationToken);
+
+    /// <summary>
+    /// Gets one of a kid's bonuses, of any day.
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="bonusId">The bonus id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The bonus, or null when the kid has no bonus with that id.</returns>
+    public async Task<StoredBonus?> GetBonusAsync(Guid userId, long bonusId, CancellationToken cancellationToken = default)
+    {
+        var found = await ReadBonusesAsync("user_id = $id AND id = $value", userId, bonusId, cancellationToken).ConfigureAwait(false);
+        return found.Count > 0 ? found[0] : null;
+    }
+
+    /// <summary>
+    /// Deletes one of a kid's bonuses (feature 13, undo).
+    /// </summary>
+    /// <param name="userId">The kid.</param>
+    /// <param name="bonusId">The bonus id.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns><c>true</c> if it was deleted; <c>false</c> if the kid had no such bonus (or it was deleted meanwhile).</returns>
+    public async Task<bool> DeleteBonusAsync(Guid userId, long bonusId, CancellationToken cancellationToken = default)
+    {
+        EnsureUsable();
+        var deleted = await _database.WriteAsync(
+            async (connection, transaction) =>
+            {
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "DELETE FROM bonus WHERE user_id = $id AND id = $bonus";
+                command.Parameters.AddWithValue("$id", Key(userId));
+                command.Parameters.AddWithValue("$bonus", bonusId);
+                return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+        return deleted > 0;
     }
 
     /// <summary>
@@ -341,6 +390,30 @@ public sealed class UsageStore
         command.Parameters.AddWithValue("$day", day);
         var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return value is null or DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+    }
+
+    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities", Justification = "Callers pass constant conditions; values are parameters")]
+    private async Task<IReadOnlyList<StoredBonus>> ReadBonusesAsync(string condition, Guid userId, object value, CancellationToken cancellationToken)
+    {
+        EnsureUsable();
+        using var connection = _database.OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, day, minutes, granted_by, created_at FROM bonus WHERE " + condition;
+        command.Parameters.AddWithValue("$id", Key(userId));
+        command.Parameters.AddWithValue("$value", value);
+        var bonuses = new List<StoredBonus>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            bonuses.Add(new StoredBonus(
+                reader.GetInt64(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal)));
+        }
+
+        return bonuses;
     }
 
     private void EnsureUsable()
