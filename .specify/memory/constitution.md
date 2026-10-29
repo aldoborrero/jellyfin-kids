@@ -1,15 +1,18 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.1 → 1.0.2 (PATCH: wording clarification)
-- Modified principles: II. The Server Decides (title unchanged). "Client reports may only add usage, never remove it."
-  gains "The only way to lower a day's usage is a parent's explicit Reset (admin, API key or parent grant), which is
-  logged." Reason: feature 7 "Reset today" (user decision 2026-10-20), which reverses feature 3's add-only
-  clarification Q5 for one explicit parent action; client reports stay add-only.
+- Version change: 1.0.2 → 1.0.3 (PATCH: wording clarification)
+- Modified sections: Technical Constraints. "Plugin state in a SQLite database under the plugin's data folder" becomes
+  "under the server's data folder (`<data dir>/data/kids`)". Reason: feature 14 moves kids.db out of
+  `BasePlugin.DataFolderPath` (`plugins/Jellyfin.Plugin.Kids`), which looks like a stray plugin install and was nearly
+  deleted; the server's `DataPath` is where Jellyfin and other plugins keep databases (specs/014-kids-db-location
+  research R1–R6). The note that plugin data is not in Jellyfin's backups stays true.
+- Modified principles: none
 - Added sections: none
 - Removed sections: none
 - Templates: plan/spec/tasks templates read this file at runtime; no template edits required
-- Follow-up: feature 3's contract and data model carry an amendment note (feature 7)
+- Follow-up: docs/plan.md §2.1, §2.6 and §6.2 updated in the same change
 - Deferred TODOs: none
+Previous (1.0.1 → 1.0.2): II gained "the only way to lower a day's usage is a parent's explicit Reset" (feature 7).
 -->
 # Jellyfin Kids Constitution
 
@@ -94,7 +97,7 @@ Rationale: enforcement bugs either fail open (useless) or fail closed (locks fam
 
 - .NET 10 (`net10.0`); `Jellyfin.Controller` and `Jellyfin.Model` 12.0.0 with runtime assets
   excluded; analyzers configured by `.editorconfig`.
-- Plugin state in a SQLite database under the plugin's data folder (`Microsoft.Data.Sqlite`, shipped
+- Plugin state in a SQLite database under the server's data folder (`<data dir>/data/kids`; `Microsoft.Data.Sqlite`, shipped
   with the server). The plugin XML configuration holds only small admin settings. Plugin data is not
   part of Jellyfin's system backups, so export and import MUST be provided before a stable release.
 - Licence: MIT. Code may be copied only from compatibly licensed sources (for example MIT plugins
@@ -118,4 +121,4 @@ This constitution supersedes other practices for this repository. Amendments are
 removing or redefining a principle, MINOR for a new principle or materially expanded guidance,
 PATCH for clarifications. Reviews of plans and changes verify compliance with the principles above.
 
-**Version**: 1.0.2 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-22
+**Version**: 1.0.3 | **Ratified**: 2026-10-17 | **Last Amended**: 2026-10-29

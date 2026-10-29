@@ -9,6 +9,7 @@ using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Auth;
 using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Profiles;
+using Jellyfin.Plugin.Kids.Storage;
 using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -35,6 +36,7 @@ public class KidsController : ControllerBase
     private readonly IPickCatalog _pickCatalog;
     private readonly UsageService _usage;
     private readonly GateCoverage _coverage;
+    private readonly KidsDatabase _database;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KidsController"/> class.
@@ -44,13 +46,15 @@ public class KidsController : ControllerBase
     /// <param name="pickCatalog">The server's collections and playlists.</param>
     /// <param name="usage">The screen-time service, for purging on unmark.</param>
     /// <param name="coverage">The playback routes enforcement guards, for the plugin information.</param>
-    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog, UsageService usage, GateCoverage coverage)
+    /// <param name="database">The plugin database, for its location.</param>
+    public KidsController(CallerResolver callers, KidProfileService profiles, IPickCatalog pickCatalog, UsageService usage, GateCoverage coverage, KidsDatabase database)
     {
         _callers = callers;
         _profiles = profiles;
         _pickCatalog = pickCatalog;
         _usage = usage;
         _coverage = coverage;
+        _database = database;
     }
 
     /// <summary>
@@ -229,6 +233,23 @@ public class KidsController : ControllerBase
 
         var max = Math.Clamp(limit ?? 50, 1, 200);
         return Ok(_pickCatalog.Search(search, max).Select(PickCandidateDto.From));
+    }
+
+    /// <summary>
+    /// Says where the plugin keeps its data, for the dashboard's Data section (feature 14).
+    /// </summary>
+    /// <response code="200">The data folder, the database file and whether it could be opened.</response>
+    /// <response code="403">The caller is not an administrator.</response>
+    /// <returns>The storage information, or a refusal.</returns>
+    [HttpGet("Admin/Storage")]
+    [Authorize(Policy = Policies.IgnoreParentalControl)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<StorageInfoDto>> GetStorage()
+    {
+        // Administrators only, as for the other dashboard data: a server path is not for kids or grant holders
+        var caller = await _callers.ResolveAsync(HttpContext).ConfigureAwait(false);
+        return caller.IsAdmin ? StorageInfoDto.From(_database) : Forbid();
     }
 
     private NotFoundObjectResult NotAKid()

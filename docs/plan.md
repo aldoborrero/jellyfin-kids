@@ -67,7 +67,7 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
 | Need | Mechanism | Source |
 |---|---|---|
 | Plugin class and XML config | `BasePlugin<TConfiguration>`: `Configuration`, `SaveConfiguration()`, `ConfigurationChanged`, `DataFolderPath` | `MediaBrowser.Common/Plugins/BasePluginOfT.cs:41-57, 90, 125-131` |
-| Data folder | `DataFolderPath = <datadir>/plugins/<AssemblyName>`. `Version` is still null when the constructor runs, so the `_<Version>` suffix branch never applies to the base constructor. Create the folder yourself | `BasePluginOfT.cs:50-57` |
+| Data folder | `DataFolderPath = <datadir>/plugins/<AssemblyName>`. `Version` is still null when the constructor runs, so the `_<Version>` suffix branch never applies to the base constructor. It sits beside the install folder and looks like a pre-manifest plugin install, so **the plugin no longer uses it** (spec 014): `kids.db` lives in `<DataPath>/kids/` | `BasePluginOfT.cs:50-57`; spec `014-kids-db-location` research R1 |
 | Config file location | `<datadir>/plugins/configurations/<Assembly>.xml`, under the **data** dir, not the config dir | `Emby.Server.Implementations/AppBase/BaseApplicationPaths.cs:58,61` |
 | DI registration | `IPluginServiceRegistrator.RegisterServices(IServiceCollection, IServerApplicationHost)`. It is created with `Activator.CreateInstance` before DI is built, and skipped unless the plugin is enabled and supported. An exception marks the plugin Malfunctioned | `Emby.Server.Implementations/Plugins/PluginManager.cs:206-236` |
 | Same container as ASP.NET | Plugin services go into the **same** `IServiceCollection` that `Startup.ConfigureServices` fills (generic host `ConfigureServices(appHost.Init)`). So a plugin can register `IHostedService`, `IAuthorizationHandler`, `IStartupFilter` and `Configure<MvcOptions>` | `Emby.Server.Implementations/ApplicationHost.cs:490-492`; `Jellyfin.Server/Program.cs:180-181`; `Jellyfin.Server/Startup.cs:64-80` |
@@ -242,7 +242,8 @@ These settle open questions 2, 3 (the hour; per-kid time zones stay out of scope
 
   **The plugins folder, including plugin XML, is not backed up**, and neither is `data/<anything else>`. Offer
   export and import of plugin state from the config page (phase 4).
-- **Recommendation**: a single SQLite file `kids.db` under `DataFolderPath`, with `WAL` and a single writer, holding:
+- **Recommendation**: a single SQLite file `kids.db` in `<DataPath>/kids/` (under `DataFolderPath` until 0.0.9.0; spec 014
+  moves it), with `WAL` and a single writer, holding:
   - `kid_profile(user_id PK, revision, json)`;
   - `parent_lock(id PK CHECK (id = 1), lock_type, verifier, changed_at)` for the household lock (schema v2, feature 2;
     a single row enforced by the table, instead of a generic `household(key, value)`);
@@ -437,7 +438,8 @@ Jellyfin.Plugin.Kids (assembly; plugin name "Kids"; guid d62ee188-270c-49d8-b7b9
 ├── Plugin.cs                      BasePlugin<PluginConfiguration>, IHasWebPages (KidsConfig html + KidsJs module)
 ├── PluginServiceRegistrator.cs    DI wiring (below)
 ├── Configuration/                 PluginConfiguration (admin defaults only), configPage.html, configPage.js
-├── Storage/KidsDatabase.cs        Microsoft.Data.Sqlite, kids.db in DataFolderPath, schema migrations by user_version
+├── Storage/KidsDatabase.cs        Microsoft.Data.Sqlite, kids.db in <DataPath>/kids, schema migrations by user_version
+├── Storage/LegacyDataMigration.cs moves kids.db from DataFolderPath (0.0.9.0 and earlier), verified and crash-safe
 ├── Allowance/                     (feature 3) KidRoster, IKidsSettings/PluginKidsSettings, DayClock, PlaybackClock,
 │                                  PlaybackEvent, StatusCalculator, SegmentValidator, UsageService (pending time, flush,
 │                                  status, bonus, reports, purge, prune); UsageStore lives in Storage/
@@ -617,7 +619,8 @@ Verified against the 12.2 sources. Paths are in `.reference/jellyfin`.
   build. In-process `POST /System/Restart` exists but is unverified for picking up new DLLs.
 - **Paths**: plugin config is `<datadir>/plugins/configurations/Jellyfin.Plugin.Kids.xml`. `DataFolderPath` is
   `<datadir>/plugins/Jellyfin.Plugin.Kids`. That folder sits beside the install folder and contains no DLLs, so the
-  loader ignores it (:877).
+  loader ignores it (:870-871). Since spec 014 it holds only the renamed pre-0.0.10.0 database and a README; the live
+  database is `<DataPath>/kids/kids.db`.
   - **Use an install folder name that differs from the assembly name**, for example `Kids_0.0.1.0`, so the data
     folder is never treated as the install folder.
 
@@ -695,6 +698,9 @@ its branch) adds kid avatars to the profile and the list of kids (API 1.1, `ApiM
 when Jellyfin's parental control hides a picked live TV channel from a kid, and names Peke for Jellyfin as the client.
 Spec `013-bonus-undo-break` (2026-10-26, plugin 0.0.9.0) gives bonuses ids and lets a grown-up undo one within 10
 minutes, and end the break after the sitting limit early, for the Peke TV app's "Add time" widget (API 1.2).
+Spec `014-kids-db-location` (2026-10-29, plugin 0.0.10.0) moves `kids.db` from `plugins/Jellyfin.Plugin.Kids/` (the
+default `DataFolderPath`, which an admin nearly deleted as a stray install) to `<DataPath>/kids/` with a verified,
+crash-safe move, a `README.txt` beside it and the location on the Kids page.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.
@@ -761,7 +767,8 @@ and handling 403 `timeUp`). It can start after feature 2 and gain the allowance 
   `Verify`, `Status` and profile reads, or a parent cannot unlock at bedtime from the kid's TV.
 - **Plugin XML is not included in 12.x system backups** (the prior study said it was).
 - **Storage**: profiles should not live in plugin XML. A dashboard save rewrites the whole object and races with
-  API writes. Use SQLite in `DataFolderPath`, which is free because `Microsoft.Data.Sqlite` ships with the server.
+  API writes. Use SQLite in `<DataPath>/kids` (spec 014; first `DataFolderPath`), which is free because
+  `Microsoft.Data.Sqlite` ships with the server.
 - **Lock types**: the app now has `CHALLENGE`, `NUMERIC` and `REMOTE`, not only digits. The server stores the lock
   type, and CHALLENGE cannot back a grant.
 - **Hard enforcement is feasible without touching policy**:

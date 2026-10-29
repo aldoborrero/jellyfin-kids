@@ -1343,6 +1343,58 @@ set_alice '{}'
 req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
 check "fk alice is left with today cleared" 200 '.UsedSeconds == 0 and .BonusSeconds == 0'
 
+# The kids data folder (feature 14, quickstart.md §2 ga–ge). The dev server runs with --datadir $dev/data, so its
+# DataPath is $dev/data/data.
+# fact <name> <command…>: PASS when the command succeeds
+fact() {
+  local name=$1
+  shift
+  if "$@"; then
+    echo "PASS $name"
+  else
+    echo "FAIL $name"
+    failures=$((failures + 1))
+  fi
+}
+kids_folder=$(cd "$dev/data/data" 2>/dev/null && pwd)/kids
+old_folder=$dev/data/plugins/Jellyfin.Plugin.Kids
+
+# ga. Admins see where the data is
+req "$admin" GET /Kids/Admin/Storage
+check "ga admin sees the data folder and database" 200 \
+  ".Folder == \"$kids_folder\" and .DatabasePath == \"$kids_folder/kids.db\" and .Available == true"
+
+# gb. Nobody else does
+req "$alice" GET /Kids/Admin/Storage
+check "gb alice cannot see the data folder" 403
+req - GET /Kids/Admin/Storage
+check "gb an anonymous caller cannot either" 401
+
+# gc. The database is in the data folder, not in the plugins folder
+fact "gc kids.db is in the data folder" test -s "$kids_folder/kids.db"
+fact "gc no live kids.db is left in the plugins folder" test ! -e "$old_folder/kids.db"
+
+# gd. The note beside it says what it is
+fact "gd README.txt says not to delete the folder and names it" \
+  grep -q "DO NOT DELETE THIS FOLDER" "$kids_folder/README.txt"
+fact "gd README.txt names the folder" grep -qF "Folder: $kids_folder" "$kids_folder/README.txt"
+
+# ge. When this dev state was moved from the old folder, the move was logged step by step
+migrated=$(ls "$old_folder"/kids.db.migrated-* 2>/dev/null | grep -v -- '-wal$\|-shm$' | head -1 || true)
+if [[ -n $migrated ]]; then
+  move_log=$(grep -l "Kids data found at the old location" "$dev"/log/log_*.log 2>/dev/null | head -1 || true)
+  fact "ge the move was logged" test -n "$move_log"
+  if [[ -n $move_log ]]; then
+    for line in "Kids data found at the old location" "Copied .* rows" "Verified the copy .*integrity ok" \
+      "Kids data now in" "Renamed the old database"; do
+      fact "ge log: $line" grep -qE "$line" "$move_log"
+    done
+  fi
+  fact "ge the old folder says where the data went" grep -qF "$kids_folder" "$old_folder/README.txt"
+else
+  echo "SKIP ge this dev state was not moved from the old folder (see quickstart.md §3)"
+fi
+
 # Leave bob unthrottled, so the next run starts clean (keep this block last)
 echo "Waiting ${bob_wait}s for bob's throttle to end"
 sleep $((bob_wait + 1))

@@ -45,6 +45,13 @@ Nothing leaves your server: no telemetry, no accounts, no third-party services.
 Updates appear in the catalog like any other plugin. See [docs/install.md](docs/install.md) for details
 and for installing a release by hand.
 
+> [!IMPORTANT]
+> **Your kids' settings live in `data/kids/` inside Jellyfin's data folder** (for example
+> `/var/lib/jellyfin/data/kids/kids.db`, or `/config/data/kids/` in Docker), shown under **Data** on the Kids page.
+> Don't delete that folder, and back it up: Jellyfin's own backup doesn't include plugin data. Updating to 0.0.10.0
+> moves the database there from `plugins/Jellyfin.Plugin.Kids/` on its own. See
+> [Your data](docs/install.md#your-data).
+
 > [!WARNING]
 > **Updating to 0.0.6.0 cuts every kid's live TV** until you pick their channels under **Live TV channels** in
 > Dashboard → Kids → the kid. This happens even with enforcement off; see [Live TV](#live-tv).
@@ -148,8 +155,9 @@ Jellyfin Kids builds on what Jellyfin already does instead of copying it:
 | Playback and stream routes | A filter on those routes only, which refuses a kid who may not play now |
 | Live TV (all or nothing per user) | Which channels each kid may watch, held on the playback, guide and recording routes |
 
-Plugin data lives in a small SQLite database in the plugin's data folder. Admins and API keys are never
-blocked, and disabling the plugin removes everything it enforces.
+Plugin data lives in a small SQLite database in `data/kids/` in Jellyfin's data folder, next to Jellyfin's own
+database (see [Your data](docs/install.md#your-data)). Admins and API keys are never blocked, and disabling the plugin
+removes everything it enforces.
 
 ## Clients
 
