@@ -1,7 +1,7 @@
 ---
 name: "Kids"
 guid: "d62ee188-270c-49d8-b7b9-5e524fec2335"
-version: "0.0.9.0"
+version: "0.0.10.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Parent-controlled kids profiles"
@@ -14,12 +14,16 @@ owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"
 changelog: >
-  Undo a bonus: POST /Kids/Users/{id}/WatchTime/Bonus now answers the new bonus's id and until when it can be undone.
-  An administrator or a parent grant holder can undo it with DELETE /Kids/Users/{id}/WatchTime/Bonus/{bonusId} within
-  10 minutes on the same day, and gets the kid's new status (time's up can come back). Ids are never reused, so two
-  TVs never undo each other's bonus. GET /Kids/Users/{id}/WatchTime/Bonus lists today's bonuses. Bonuses given with a
-  parent grant are recorded as such. Undos are logged.
-  End a break: POST /Kids/Users/{id}/WatchTime/Break/End lets a kid in the break after their sitting limit watch again
-  at once, keeping today's used time and bonus; the next sitting starts from zero at the next playback. Logged.
-  GET /Kids/Info reports API 1.2 (ApiMinorVersion 2) with the bonusUndo and breakEnd capabilities. The kid editor lists
-  today's bonuses with Undo and shows End break during a break. The plugin database moves to schema 5.
+  The plugin's data moves to a safe place. The database (kid profiles, the parent code verifier, screen time, bonuses,
+  channels and picks) used to live in plugins/Jellyfin.Plugin.Kids/, next to the plugin's install folder, where it
+  looked like a stray old install. It now lives in data/kids/kids.db in Jellyfin's data folder, next to Jellyfin's own
+  database (for example /var/lib/jellyfin/data/kids/, or /config/data/kids/ in Docker). On its first start this version
+  moves it: it copies the database with SQLite's backup (pending write-ahead log changes included), checks the copy
+  (integrity check, same schema version, same rows in every table), switches to it, and renames the old file
+  kids.db.migrated-<date>, kept for one release. Every step is logged, and an interrupted move resumes at the next
+  start. A locked or damaged old database is left untouched and nothing is created; if both folders hold a database
+  the one written later is used and the other kept as kids.db.older-<date-time>, or the plugin refuses with an error
+  when it cannot tell. A README.txt in the folder says what it is and not to delete it. Dashboard → Kids shows the data
+  folder under Data (GET /Kids/Admin/Storage, administrators only). Jellyfin's own backup does not include plugin data:
+  back up the folder (see docs/install.md, "Your data"). Downgrading to 0.0.9.0 starts with no kids unless you copy
+  data/kids/kids.db back to plugins/Jellyfin.Plugin.Kids/ first.

@@ -9,7 +9,10 @@
     <div id="KidsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsJs">
         <!-- Layout only: colours come from Jellyfin's theme variables and classes, so every theme works -->
         <style>
-            #KidsPage .kidsUserRow, #KidsPage .kidsLockRow { cursor: default; }
+            #KidsPage .kidsUserRow, #KidsPage .kidsLockRow, #KidsPage .kidsDataRow { cursor: default; }
+            #KidsPage .kidsDataRow .listItemBody { min-width: 0; }
+            #KidsPage .kidsDataRow .listItemBodyText { white-space: normal; overflow-wrap: anywhere; }
+            #KidsPage .kidsDataFile.kidsProblem { color: var(--jf-palette-error-main, #cb272a); }
             #KidsPage .kidsUserRow .listItemBody { min-width: 0; }
             #KidsPage .kidsUserName { white-space: normal; overflow-wrap: anywhere; }
             #KidsPage .kidsUserRow .listItemBodyText.secondary { white-space: normal; overflow-wrap: anywhere; }
@@ -198,6 +201,26 @@
                                 <span>Save</span>
                             </button>
                         </form>
+                    </div>
+
+                    <div class="verticalSection kidsDataSection">
+                        <div class="sectionTitleContainer flex align-items-center">
+                            <h3 class="sectionTitle">Data</h3>
+                        </div>
+                        <p class="fieldDescription">
+                            Kid profiles, the parent code, screen time and channels are kept in this folder on the server.
+                            Back it up with Jellyfin's data; Jellyfin's own backup does not include it. Don't delete it:
+                            that loses every kid's settings.
+                        </p>
+                        <div class="paperList">
+                            <div class="listItem kidsDataRow" data-action="none">
+                                <span class="material-icons listItemIcon folder" aria-hidden="true"></span>
+                                <div class="listItemBody two-line">
+                                    <div class="listItemBodyText kidsDataFolder"></div>
+                                    <div class="listItemBodyText secondary kidsDataFile" role="status" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

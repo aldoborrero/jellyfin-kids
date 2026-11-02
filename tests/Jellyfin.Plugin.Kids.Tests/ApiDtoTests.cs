@@ -18,6 +18,19 @@ public class ApiDtoTests
     }
 
     [Fact]
+    public void StorageInfo_HasTheFolderTheFileAndWhetherItOpened()
+    {
+        using var folder = new TempFolder();
+        using var database = new Storage.KidsDatabase(folder.Path, Microsoft.Extensions.Logging.Abstractions.NullLogger<Storage.KidsDatabase>.Instance);
+
+        var info = StorageInfoDto.From(database);
+
+        Assert.Equal(System.IO.Path.GetFullPath(folder.Path), info.Folder);
+        Assert.Equal(System.IO.Path.Combine(info.Folder, "kids.db"), info.DatabasePath);
+        Assert.True(info.Available);
+    }
+
+    [Fact]
     public void ProfileUpdate_PassesTheAvatarToValidation()
     {
         Assert.Equal("Max", new KidProfileUpdate { Revision = 1, Avatar = "Max" }.ToInput().Avatar);

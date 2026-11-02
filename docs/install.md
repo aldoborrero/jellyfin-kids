@@ -29,6 +29,55 @@ for plugins with automatic updates enabled (the default). To update by hand, ope
 **Dashboard → Plugins**, pick the newer version under **Revision History** and select **Install**.
 Either way, restart Jellyfin to load the new version.
 
+## Your data
+
+The plugin keeps kid profiles, the parent code (as a verifier only), screen time, bonuses, live TV channels and
+picks in one SQLite database, in a `kids` folder inside Jellyfin's data folder, next to Jellyfin's own `jellyfin.db`:
+
+| Install | Folder |
+|---|---|
+| Debian, Ubuntu (`.deb`) | `/var/lib/jellyfin/data/kids/` |
+| Official Docker image | `/config/data/kids/` inside the container (in the volume you mount on `/config`) |
+| Windows | `%ProgramData%\Jellyfin\Server\data\kids\` |
+| Any other | `<data dir>/data/kids/`, where `<data dir>` is Jellyfin's `--datadir` |
+
+**Dashboard → Kids** shows the exact folder at the bottom of the page, under **Data**.
+
+- **Don't delete this folder.** It is not a leftover: deleting it loses every kid's settings. A `README.txt` in it says
+  so. Updating and uninstalling the plugin keep it on purpose, so a reinstall finds your kids again.
+- **Back it up.** Jellyfin's own backup (**Dashboard → Backups**) does not include any plugin's data. Copy the folder
+  with Jellyfin stopped, or include it in a backup of Jellyfin's whole data directory, as Jellyfin's
+  [backup guide](https://jellyfin.org/docs/general/administration/backup-and-restore/) recommends anyway. With
+  `sqlite3` installed you can also copy the database while Jellyfin runs:
+  `sqlite3 /var/lib/jellyfin/data/kids/kids.db ".backup kids-backup.db"`.
+- **Restore** by stopping Jellyfin and putting `kids.db` back in the folder (without old `kids.db-wal` or `kids.db-shm`
+  files).
+- **Remove the data for good** by uninstalling the plugin, stopping Jellyfin and deleting the folder.
+
+### Moving from 0.0.9.0 and earlier
+
+Up to 0.0.9.0 the database lived in `plugins/Jellyfin.Plugin.Kids/` (for example
+`/var/lib/jellyfin/plugins/Jellyfin.Plugin.Kids/kids.db`), beside the plugin's install folder `plugins/Kids_<version>/`,
+where it looked like a stray old install. On its first start, 0.0.10.0 moves it:
+
+1. It copies the database, including any changes not yet merged from `kids.db-wal`, to `data/kids/kids.db.migrating`.
+2. It checks the copy (SQLite's integrity check, the same schema version and the same rows in every table) and only
+   then renames it to `data/kids/kids.db`.
+3. It renames the old file to `kids.db.migrated-<date>` and leaves a `README.txt` in the old folder. That copy is kept
+   for one release; you may delete the old folder once Dashboard → Kids shows your kids.
+
+Each step is logged. If the server stops halfway, the next start picks up where it left off: the old database is only
+renamed after the new one is complete and checked. If the old database can't be read (locked by another program, or
+damaged), nothing is moved or created, kids data is unavailable and the log says why; fix it and restart Jellyfin.
+
+If both folders hold a database, the plugin uses the one written later and keeps the other under
+`kids.db.older-<date-time>`. When it can't tell (written at the same time, or the later one is empty while the other
+has kids), it stops with an error naming both files: keep the one you want, move the other out of its folder, and
+restart.
+
+**Downgrading** to 0.0.9.0 after the move starts with no kids, because 0.0.9.0 looks in the old folder. To go back,
+stop Jellyfin and copy `data/kids/kids.db` to `plugins/Jellyfin.Plugin.Kids/kids.db` first.
+
 ## Manual install
 
 Every version is also attached to its [GitHub release](https://github.com/aldoborrero/jellyfin-kids/releases)

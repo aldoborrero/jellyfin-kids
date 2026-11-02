@@ -2,7 +2,8 @@
 // of Jellyfin users where kids are marked and unmarked, each kid with their avatar, today's screen time, their live
 // TV, what still leaves them unprotected in Jellyfin (with a link to fix it, picked channels Jellyfin hides included)
 // and an "App only" pill while enforcement is off; the household parent lock; and the screen time settings: "day
-// starts at" with the server time, enforcement on every app with its self-check, and the break between sittings.
+// starts at" with the server time, enforcement on every app with its self-check, and the break between sittings; and
+// the Data section with the folder the plugin keeps its data in (read-only).
 // Data comes only from authenticated calls; the page HTML is served anonymously and holds none. Every name is inserted
 // as text. Successes are confirmed with a toast, errors inline or in a dialog.
 
@@ -783,6 +784,27 @@ function removeLock(view) {
     });
 }
 
+// Data section: where the plugin keeps its data, read-only, from an admin-only call (the page HTML holds no path)
+function loadStorage(view) {
+    const folder = view.querySelector('.kidsDataFolder');
+    const file = view.querySelector('.kidsDataFile');
+    const show = (folderText, fileText, isProblem) => {
+        folder.textContent = folderText || '';
+        file.textContent = fileText || '';
+        file.classList.toggle('kidsProblem', Boolean(isProblem));
+    };
+    show(null, null, false);
+    return request('GET', 'Kids/Admin/Storage')
+        .then((storage) => {
+            if (storage.Available) {
+                show(storage.Folder, 'Database: ' + storage.DatabasePath, false);
+            } else {
+                show(storage.Folder, 'The database could not be opened. Check the server log.', true);
+            }
+        })
+        .catch(() => show(null, 'Could not load the data location.', true));
+}
+
 export default function (view) {
     // Reloading or closing the tab with unsaved settings asks first; Jellyfin's own navigation cannot be held back
     const onBeforeUnload = (event) => {
@@ -810,6 +832,7 @@ export default function (view) {
     view.addEventListener('viewshow', () => {
         window.addEventListener('beforeunload', onBeforeUnload);
         loadLock(view);
+        loadStorage(view);
         refresh(view);
     });
     view.addEventListener('viewhide', () => window.removeEventListener('beforeunload', onBeforeUnload));

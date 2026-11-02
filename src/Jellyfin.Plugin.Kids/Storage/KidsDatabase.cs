@@ -10,12 +10,13 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Kids.Storage;
 
 /// <summary>
-/// The plugin's SQLite database, <c>kids.db</c> in the plugin data folder.
+/// The plugin's SQLite database, <c>kids.db</c> in the kids data folder <c>&lt;data&gt;/kids</c>
+/// (<see cref="IApplicationPaths.DataPath"/>, beside the server's own database; feature 14).
 /// </summary>
 /// <remarks>
-/// Plugin services are registered before the plugin instance exists, so the folder comes from
-/// <see cref="IApplicationPaths.PluginsPath"/> (the same folder as <c>BasePlugin.DataFolderPath</c>), and nothing
-/// touches the disk until the first <see cref="EnsureInitialized"/>.
+/// Up to 0.0.9.0 the database lived in <c>BasePlugin.DataFolderPath</c> (<c>plugins/Jellyfin.Plugin.Kids</c>), which
+/// looks like a stray plugin install; the first <see cref="EnsureInitialized"/> moves it with
+/// <see cref="LegacyDataMigration"/> before opening anything. Nothing touches the disk before that call.
 /// </remarks>
 public sealed class KidsDatabase : IDisposable
 {
@@ -23,6 +24,16 @@ public sealed class KidsDatabase : IDisposable
     /// The database file name.
     /// </summary>
     public const string FileName = "kids.db";
+
+    /// <summary>
+    /// The kids data folder's name under <see cref="IApplicationPaths.DataPath"/>.
+    /// </summary>
+    public const string FolderName = "kids";
+
+    /// <summary>
+    /// The old data folder's name under <see cref="IApplicationPaths.PluginsPath"/> (the plugin's <c>DataFolderPath</c>).
+    /// </summary>
+    public const string OldFolderName = "Jellyfin.Plugin.Kids";
 
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
@@ -78,8 +89,9 @@ public sealed class KidsDatabase : IDisposable
         """
     ];
 
-    private readonly string _folder;
+    private readonly string? _oldFolder;
     private readonly ILogger<KidsDatabase> _logger;
+    private readonly TimeProvider _time;
     private readonly Lazy<bool> _initialized;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -89,7 +101,21 @@ public sealed class KidsDatabase : IDisposable
     /// <param name="applicationPaths">The server paths.</param>
     /// <param name="logger">The logger.</param>
     public KidsDatabase(IApplicationPaths applicationPaths, ILogger<KidsDatabase> logger)
-        : this(Path.Combine(applicationPaths.PluginsPath, "Jellyfin.Plugin.Kids"), logger)
+        : this(
+            Path.Combine(applicationPaths.DataPath, FolderName),
+            Path.Combine(applicationPaths.PluginsPath, OldFolderName),
+            logger,
+            TimeProvider.System)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="KidsDatabase"/> class in a given folder, with no old folder.
+    /// </summary>
+    /// <param name="folder">The folder that holds the database file.</param>
+    /// <param name="logger">The logger.</param>
+    internal KidsDatabase(string folder, ILogger<KidsDatabase> logger)
+        : this(folder, null, logger, TimeProvider.System)
     {
     }
 
@@ -97,14 +123,23 @@ public sealed class KidsDatabase : IDisposable
     /// Initializes a new instance of the <see cref="KidsDatabase"/> class in a given folder.
     /// </summary>
     /// <param name="folder">The folder that holds the database file.</param>
+    /// <param name="oldFolder">The folder an older version kept the database in, or <c>null</c>.</param>
     /// <param name="logger">The logger.</param>
-    internal KidsDatabase(string folder, ILogger<KidsDatabase> logger)
+    /// <param name="time">The clock, for the names of files the move renames.</param>
+    internal KidsDatabase(string folder, string? oldFolder, ILogger<KidsDatabase> logger, TimeProvider time)
     {
-        _folder = folder;
+        Folder = Path.GetFullPath(folder);
+        _oldFolder = oldFolder;
         _logger = logger;
-        DatabasePath = Path.Combine(folder, FileName);
+        _time = time;
+        DatabasePath = Path.Combine(Folder, FileName);
         _initialized = new Lazy<bool>(Initialize, LazyThreadSafetyMode.ExecutionAndPublication);
     }
+
+    /// <summary>
+    /// Gets the kids data folder (absolute).
+    /// </summary>
+    public string Folder { get; }
 
     /// <summary>
     /// Gets the path of the database file.
@@ -177,9 +212,17 @@ public sealed class KidsDatabase : IDisposable
     [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities", Justification = "Migration SQL and versions are constants")]
     private bool Initialize()
     {
+        // Before any connection: opening would create an empty database at the new place
+        if (_oldFolder is not null
+            && new LegacyDataMigration(_oldFolder, Folder, _logger, _time).Run() is MigrationOutcome.Refused or MigrationOutcome.Failed)
+        {
+            return false;
+        }
+
         try
         {
-            Directory.CreateDirectory(_folder);
+            Directory.CreateDirectory(Folder);
+            DataFolderNotes.Write(Path.Combine(Folder, DataFolderNotes.FileName), DataFolderNotes.DataFolder(Folder), _logger);
             using var connection = OpenConnection();
             var version = ReadUserVersion(connection);
             if (version > SchemaVersion)
