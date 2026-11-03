@@ -1,11 +1,12 @@
-// The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it), picked live TV
-// channels that Jellyfin hides from them included; today's screen time with the server time, "Reset today" and, during
-// a break, "End break"; the daily allowance and the sitting limit, each with an explicit "No limit", and the household
-// break; bonus minutes and today's bonuses, with Undo inside their window; the allowed hours from Jellyfin
-// (read-only); the avatar; search, autoplay and its limit; home sections (order and visibility); the picked
-// collections and playlists; and the live TV channels the kid may watch. Saves with the loaded revision; a conflict
-// never overwrites. Bonus minutes, Undo, End break and Reset today apply straight away, apart from the save. Every
-// name is inserted as text; successes are confirmed with a toast.
+// The kid settings editor: what still leaves the kid unprotected in Jellyfin (each with the tab that fixes it), picked
+// live TV channels that Jellyfin hides from them included, above four tabs. Kids holds this plugin's settings: today's
+// screen time with the server time, "Reset today" and, during a break, "End break"; the daily allowance and the
+// sitting limit, each with an explicit "No limit", and the household break; bonus minutes and today's bonuses, with
+// Undo inside their window; the avatar; search, autoplay and its limit; home sections (order and visibility); the
+// picked collections and playlists; and the live TV channels the kid may watch. It saves with the loaded revision; a
+// conflict never overwrites. Bonus minutes, Undo, End break and Reset today apply straight away, apart from the save.
+// Profile, Access and Parental control edit the kid's Jellyfin policy, each saved on its own as jellyfin-web does.
+// Every name is inserted as text; successes are confirmed with a toast.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -292,7 +293,7 @@ function serverClock(status, dayStartHour) {
     return { format, label, now: format(status.ServerTime) };
 }
 
-// Jellyfin's allowed hours (AccessSchedules), read-only: hours are decimal (8.5 is 08:30)
+// Jellyfin's allowed hours (AccessSchedules): hours are decimal (8.5 is 08:30)
 const scheduleDays = {
     Everyday: 'Every day',
     Weekday: 'Weekdays',
@@ -333,6 +334,7 @@ function pluginConfiguration() {
 export default function (view, params) {
     const userId = params.userId;
     const form = view.querySelector('.kidsUserForm');
+    const editor = view.querySelector('.kidsEditor');
     const capInput = view.querySelector('.kidsAutoplayCap');
     const autoplayInput = view.querySelector('.kidsAutoplayEnabled');
     const searchInput = view.querySelector('.kidsPickSearch');
@@ -350,6 +352,20 @@ export default function (view, params) {
     let user = null;
     let config = null; // the plugin configuration, for the day start and the break; null when unreadable
     let snapshot = null; // what Save would send, as loaded or last saved
+
+    // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
+    const tabNames = ['kids', 'profile', 'access', 'parental'];
+
+    function selectTab(name) {
+        const tab = tabNames.includes(name) ? name : 'kids';
+        view.querySelectorAll('.kidsTab').forEach((button) => {
+            button.setAttribute('aria-selected', String(button.dataset.tab === tab));
+            button.tabIndex = button.dataset.tab === tab ? 0 : -1;
+        });
+        view.querySelectorAll('.kidsPanel').forEach((panel) => {
+            panel.hidden = panel.dataset.tab !== tab;
+        });
+    }
 
     function showMessage(text) {
         const message = view.querySelector('.kidsMessage');
@@ -485,7 +501,7 @@ export default function (view, params) {
     }
 
     function isDirty() {
-        return snapshot !== null && !form.hidden && JSON.stringify(currentBody()) !== snapshot;
+        return snapshot !== null && !editor.hidden && JSON.stringify(currentBody()) !== snapshot;
     }
 
     function renderDirty() {
@@ -641,7 +657,6 @@ export default function (view, params) {
         view.querySelector('.kidsLiveTvAccessOff').hidden = policy.EnableLiveTvAccess !== false;
         const blocked = policy.BlockUnratedItems || [];
         view.querySelector('.kidsLiveTvUnrated').hidden = !blocked.includes('LiveTvChannel') && !blocked.includes('LiveTvProgram');
-        view.querySelector('.kidsUserProfileLink').href = userTab(userId, 'profile');
     }
 
     // Health lines from the stored channel list, the administrator one first
@@ -652,25 +667,16 @@ export default function (view, params) {
         list.replaceChildren(...issues.map((issue) => {
             const line = element('p', 'kidsWarning');
             line.append(icon('warning'), issue.text);
-            if (issue.href) {
-                const fix = element('a', 'button-link', 'Fix');
-                fix.setAttribute('is', 'emby-linkbutton');
-                fix.href = issue.href;
+            if (issue.tab) {
+                const fix = element('button', 'button-link', 'Fix');
+                fix.type = 'button';
                 fix.setAttribute('aria-label', 'Fix: ' + issue.text);
+                fix.addEventListener('click', () => selectTab(issue.tab));
                 line.append(fix);
             }
 
             return line;
         }));
-    }
-
-    function renderSchedule() {
-        const schedules = (user && user.Policy && user.Policy.AccessSchedules) || [];
-        const list = view.querySelector('.kidsSchedule');
-        list.replaceChildren(...(schedules.length === 0
-            ? [element('li', null, 'Any time: no allowed hours are set in Jellyfin.')]
-            : schedules.map((schedule) => element('li', null, scheduleText(schedule)))));
-        view.querySelector('.kidsScheduleLink').href = userTab(userId, 'parentalcontrol');
     }
 
     function renderResults(candidates, term) {
@@ -919,7 +925,7 @@ export default function (view, params) {
     function load() {
         Dashboard.showLoadingMsg();
         showMessage(null);
-        form.hidden = true;
+        editor.hidden = true;
         snapshot = null;
         // The channel list and the configuration are not needed to edit the rest: if they fail, their lines say less
         // Asked for this kid, so each channel also says whether Jellyfin hides it from them
@@ -932,10 +938,10 @@ export default function (view, params) {
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 serverChannels = serverList;
                 renderLiveTvWarnings();
-                renderSchedule();
                 renderBreak();
                 return applyProfile(profile).then(() => {
-                    form.hidden = false;
+                    selectTab(params.tab);
+                    editor.hidden = false;
                     renderDirty();
                     loadUsage();
                     search();
@@ -990,7 +996,7 @@ export default function (view, params) {
                 }
 
                 if (status === 404) {
-                    form.hidden = true;
+                    editor.hidden = true;
                     showMessage('This user is no longer a kid.');
                     return undefined;
                 }
@@ -1029,6 +1035,23 @@ export default function (view, params) {
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(search, 300);
+    });
+    view.querySelectorAll('.kidsTab').forEach((button) => {
+        button.addEventListener('click', () => selectTab(button.dataset.tab));
+        // Arrow keys move along the tabs, as in a tablist
+        button.addEventListener('keydown', (event) => {
+            const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+            if (offset) {
+                event.preventDefault();
+                const next = tabNames[(tabNames.indexOf(button.dataset.tab) + offset + tabNames.length) % tabNames.length];
+                selectTab(next);
+                view.querySelector('#kidsTab-' + next).focus();
+            }
+        });
+    });
+    view.querySelector('.kidsGoProfile').addEventListener('click', (event) => {
+        event.preventDefault();
+        selectTab('profile');
     });
     view.querySelector('.kidsReload').addEventListener('click', () => {
         if (conflictProfile) {
