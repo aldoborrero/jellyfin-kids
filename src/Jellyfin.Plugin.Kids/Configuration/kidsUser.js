@@ -409,6 +409,7 @@ export default function (view, params) {
     let snapshot = null; // what Save would send, as loaded or last saved
     let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
     let ratingGroups = []; // the server's parental ratings, grouped by score, for the Parental control tab
+    let schedules = []; // the Parental control tab's allowed hours: { DayOfWeek, StartHour, EndHour }
 
     // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
     const tabNames = ['kids', 'profile', 'access', 'parental'];
@@ -486,7 +487,7 @@ export default function (view, params) {
         return false;
     }
 
-    // Parental control: the maximum rating ("None" for no maximum) and the unrated types to block
+    // Parental control: the maximum rating ("None" for no maximum), the unrated types to block and the allowed hours
     function renderRatings(selected) {
         const select = view.querySelector('.kidsMaxRating');
         const none = element('option', null, 'None');
@@ -513,14 +514,83 @@ export default function (view, params) {
         }));
     }
 
+    function renderSchedules() {
+        const list = view.querySelector('.kidsSchedules');
+        if (schedules.length === 0) {
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Any time: no allowed hours are set.'));
+            return;
+        }
+
+        list.replaceChildren(...schedules.map((schedule, index) => {
+            const item = row('listItem-border');
+            const body = element('div', 'listItemBody');
+            body.append(element('div', 'listItemBodyText', scheduleText(schedule)));
+            item.append(body, iconButton('delete', 'Remove ' + scheduleText(schedule), () => {
+                schedules.splice(index, 1);
+                renderSchedules();
+                renderTabDirty();
+            }));
+            return item;
+        }));
+    }
+
+    const scheduleDialog = view.querySelector('.kidsScheduleDialog');
+
+    function hourOptions(select, from, to) {
+        const options = [];
+        for (let hour = from; hour <= to; hour += 0.5) {
+            const option = element('option', null, hourText(hour));
+            option.value = String(hour);
+            options.push(option);
+        }
+
+        select.replaceChildren(...options);
+    }
+
+    function openScheduleDialog() {
+        const day = view.querySelector('.kidsScheduleDay');
+        day.replaceChildren(...['Everyday', 'Weekday', 'Weekend', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            .map((id) => {
+                const option = element('option', null, scheduleDays[id]);
+                option.value = id;
+                return option;
+            }));
+        hourOptions(view.querySelector('.kidsScheduleStart'), 0, 23.5);
+        hourOptions(view.querySelector('.kidsScheduleEnd'), 0.5, 24);
+        view.querySelector('.kidsScheduleStart').value = '8';
+        view.querySelector('.kidsScheduleEnd').value = '20';
+        setLine(view.querySelector('.kidsScheduleError'), null);
+        scheduleDialog.showModal();
+    }
+
+    function addSchedule(event) {
+        event.preventDefault();
+        const start = Number(view.querySelector('.kidsScheduleStart').value);
+        const end = Number(view.querySelector('.kidsScheduleEnd').value);
+        if (end <= start) {
+            setLine(view.querySelector('.kidsScheduleError'), 'The end must be after the start.');
+            return;
+        }
+
+        schedules.push({ DayOfWeek: view.querySelector('.kidsScheduleDay').value, StartHour: start, EndHour: end });
+        scheduleDialog.close();
+        renderSchedules();
+        renderTabDirty();
+    }
+
     policyTabs.parental = {
         read: () => ({
             rating: Number(view.querySelector('.kidsMaxRating').value),
-            unrated: [...view.querySelectorAll('.kidsUnratedType')].filter((box) => box.checked).map((box) => box.dataset.type)
+            unrated: [...view.querySelectorAll('.kidsUnratedType')].filter((box) => box.checked).map((box) => box.dataset.type),
+            schedules: schedules.map((s) => [s.DayOfWeek, s.StartHour, s.EndHour])
         }),
         fill: (policy) => {
             renderRatings(ratingIndex(ratingGroups, policy));
             renderUnrated(policy.BlockUnratedItems || []);
+            // The server's DayOfWeek is kept as it came (a name; scheduleText reads a number too). Jellyfin assigns
+            // the Id and UserId of each new entry, as with jellyfin-web's dialog.
+            schedules = (policy.AccessSchedules || []).map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
+            renderSchedules();
         },
         apply: (policy) => {
             const fields = policyTabs.parental.read();
@@ -530,6 +600,7 @@ export default function (view, params) {
             // Types this page doesn't list (a later Jellyfin's) stay as they were
             const known = new Set(unratedTypes.map((type) => type.id));
             policy.BlockUnratedItems = (policy.BlockUnratedItems || []).filter((type) => !known.has(type)).concat(fields.unrated);
+            policy.AccessSchedules = schedules.map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
         }
     };
 
@@ -1247,6 +1318,9 @@ export default function (view, params) {
             conflictProfile = null;
         }
     });
+    view.querySelector('.kidsScheduleAdd').addEventListener('click', openScheduleDialog);
+    view.querySelector('.kidsScheduleForm').addEventListener('submit', addSchedule);
+    view.querySelector('.kidsScheduleCancel').addEventListener('click', () => scheduleDialog.close());
     view.addEventListener('viewshow', () => {
         window.addEventListener('beforeunload', onBeforeUnload);
         load();
