@@ -53,3 +53,31 @@ Both modules are `export default function (view, params)` and load their data on
     the form with the returned profile. Nothing is overwritten (FR-026).
   - 404: "This user is no longer a kid".
 - **Controls**: everything is reachable with the keyboard; the up and down buttons are `paper-icon-button-light`.
+- **Tabs**: the health issues sit above a tab strip (`role="tablist"`, the arrow keys move along it). The URL's
+  optional `&tab=kids|profile|access|parental` picks the first one shown; anything else shows Kids.
+  - **Kids**: everything above, saved with the plugin API.
+  - **Profile**: "Allow this user to manage the server" (shown only while the kid is an administrator, so it can be
+    turned off), "Allow Live TV access", "Allow media downloading".
+  - **Access**: "Enable access to all libraries", or a checkbox per library.
+  - **Parental control**: the maximum allowed parental rating ("None" for no maximum), the item types blocked when
+    unrated, and the allowed hours (added in a dialog, removed per row).
+
+  Profile, Access and Parental control are the kid's Jellyfin account settings and link to Jellyfin's user page for
+  the rest. Each tab marks unsaved changes on its own, and switching tabs keeps them.
+- **Load** (Jellyfin tabs): also `GET /Library/MediaFolders?IsHidden=false` and `GET /Localization/ParentalRatings`
+  (grouped by score and sub score, as jellyfin-web lists them). Both are required, like the user.
+- **Save (Jellyfin tabs)**: each tab is its own form with its own Save, as jellyfin-web's user tabs:
+  1. re-read the user (`ApiClient.getUser`), so the write starts from the current policy;
+  2. change only the tab's fields:
+     - Profile: `IsAdministrator` (only ever turned off), `EnableLiveTvAccess`, `EnableContentDownloading`;
+     - Access: `EnableAllFolders`, `EnabledFolders` (empty when all libraries are on; stored ids the list doesn't
+       show are kept);
+     - Parental control: `MaxParentalRating`, `MaxParentalSubRating`, `BlockUnratedItems` (types the page doesn't
+       list are kept), `AccessSchedules`;
+  3. `POST /Users/{id}/Policy` with the whole policy, every other field as it came;
+  4. "Settings saved", and the health issues are recomputed from the saved policy.
+
+  On an error, Jellyfin's reason shows inline in the tab ("Couldn't save to Jellyfin: … Nothing was changed."), and
+  the form keeps its values for a retry.
+- **Health issues**: each Fix opens the editor tab that fixes it, in the editor and from the Kids page
+  (`#/configurationpage?name=KidsUser&userId=<guid>&tab=<tab>`).

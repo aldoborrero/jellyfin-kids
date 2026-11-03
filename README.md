@@ -67,7 +67,7 @@ and for installing a release by hand.
 | **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
-| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. Each kid shows what still leaves them unprotected in Jellyfin (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, picked channels that Jellyfin's parental control hides, downloads) with a link to fix it, and a banner says when limits only apply in the kids app. |
+| **Dashboard pages** | Everything above is managed from Jellyfin's own dashboard, no extra app needed. Each kid shows what still leaves them unprotected in Jellyfin (an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, picked channels that Jellyfin's parental control hides, downloads), and each fix is on the kid's own page: libraries, maximum rating, unrated items, allowed hours, live TV access and downloads are edited there, next to the kids settings. A banner says when limits only apply in the kids app. |
 | **Cleanup** | A deleted user's kid profile and usage go with them, and usage older than 90 days is pruned daily. |
 
 ## Screenshots
@@ -77,11 +77,11 @@ The Kids dashboard pages in Jellyfin 12.2 (development server, with sample kids)
 <table>
   <tr>
     <td width="50%"><a href="docs/assets/screenshots/kids-page-dark.png"><img src="docs/assets/screenshots/kids-page-dark.png" alt="Kids page in the dark theme: users with their kid status, today's screen time and health warnings with Fix links, the enforcement banner, the parent lock and the screen time settings"></a></td>
-    <td width="50%"><a href="docs/assets/screenshots/kid-editor-dark.png"><img src="docs/assets/screenshots/kid-editor-dark.png" alt="Kid editor in the dark theme: health warnings, screen time with Reset today, daily allowance, sitting limit and bonus, allowed hours, browsing, home sections, picks and live TV channels"></a></td>
+    <td width="50%"><a href="docs/assets/screenshots/kid-editor-dark.png"><img src="docs/assets/screenshots/kid-editor-dark.png" alt="Kid editor in the dark theme: health warnings with Fix links above the Kids, Profile, Access and Parental control tabs; the Kids tab with screen time and Reset today, daily allowance, sitting limit and bonus, browsing, home sections, picks and live TV channels"></a></td>
   </tr>
   <tr>
     <td align="center"><b>Kids page</b>: who is a kid, today's screen time, what still leaves each kid unprotected, with Fix links, the parent lock and household settings.</td>
-    <td align="center"><b>Kid editor</b>: screen time, sitting limit, bonus and Reset today, allowed hours, home sections, picks and live TV channels.</td>
+    <td align="center"><b>Kid editor</b>: screen time, sitting limit, bonus and Reset today, home sections, picks and live TV channels, with tabs for the kid's Jellyfin profile, libraries and parental control.</td>
   </tr>
   <tr>
     <td width="50%"><a href="docs/assets/screenshots/kids-page-light.png"><img src="docs/assets/screenshots/kids-page-light.png" alt="Kids page in the light theme"></a></td>
@@ -134,9 +134,9 @@ whether or not enforcement is: they are a content rule, like ratings. For kids o
 - Playing a channel that is not in their list is refused on every client (jellyfin-web shows "Playback of this media
   is not allowed"; other routes answer 403 with `X-Kids-Reason: liveTvChannel`).
 - Jellyfin's own channel list and guide show only their channels; recordings and timers are refused.
-- The kid's Jellyfin user still needs **Allow Live TV access** (the editor warns when it is off), and Jellyfin's
-  ratings and "block unrated" settings still apply to channels and programs: the dashboard names each picked channel
-  they hide from a kid, and how to fix it.
+- The kid's Jellyfin user still needs **Allow Live TV access**: turn it on in the kid's Profile tab (the editor warns
+  when it is off). Jellyfin's ratings and "block unrated" settings still apply to channels and programs: the
+  dashboard names each picked channel they hide from a kid, and the editor tab that fixes it.
 - Live TV counts toward the daily allowance and the sitting, and enforcement stops it like any other playback.
 
 Kids clients read the kid's channels and guide from `GET /Kids/Users/{id}/LiveTv/Channels` and `/LiveTv/Programs`.
