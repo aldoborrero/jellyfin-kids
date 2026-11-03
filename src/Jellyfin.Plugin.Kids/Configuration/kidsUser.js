@@ -352,6 +352,7 @@ export default function (view, params) {
     let user = null;
     let config = null; // the plugin configuration, for the day start and the break; null when unreadable
     let snapshot = null; // what Save would send, as loaded or last saved
+    let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
 
     // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
     const tabNames = ['kids', 'profile', 'access', 'parental'];
@@ -365,6 +366,68 @@ export default function (view, params) {
         view.querySelectorAll('.kidsPanel').forEach((panel) => {
             panel.hidden = panel.dataset.tab !== tab;
         });
+    }
+
+    // The Jellyfin tabs. Each has read() (its fields from the form, for unsaved changes), fill(policy) (the form from
+    // a policy) and apply(policy) (its fields into a policy, the others untouched); each registers itself below
+    const policyTabs = {};
+    const policySnapshots = {};
+
+    function policyTabDirty(tab) {
+        return policySnapshots[tab] !== undefined && JSON.stringify(policyTabs[tab].read()) !== policySnapshots[tab];
+    }
+
+    function renderTabDirty() {
+        view.querySelectorAll('.kidsTab').forEach((button) => {
+            const tab = button.dataset.tab;
+            const dirty = tab === 'kids' ? isDirty() : policyTabs[tab] !== undefined && policyTabDirty(tab);
+            button.querySelector('.kidsTabUnsaved').hidden = !dirty;
+            const unsaved = view.querySelector('.kidsPanel[data-tab="' + tab + '"] .kidsUnsaved');
+            if (unsaved) {
+                unsaved.hidden = !dirty;
+            }
+        });
+    }
+
+    function fillPolicyTabs() {
+        for (const [tab, entry] of Object.entries(policyTabs)) {
+            entry.fill(user.Policy);
+            policySnapshots[tab] = JSON.stringify(entry.read());
+        }
+
+        renderTabDirty();
+    }
+
+    // Like jellyfin-web's user tabs: read the user again so the write starts from the current policy, change only this
+    // tab's fields, and send the whole policy back. Fields no tab shows (tags, devices, …) go back as they came.
+    function savePolicyTab(tab, event) {
+        event.preventDefault();
+        const error = view.querySelector('.kidsPanel[data-tab="' + tab + '"] .kidsFormError');
+        setLine(error, null);
+        Dashboard.showLoadingMsg();
+        ApiClient.getUser(userId)
+            .then((current) => {
+                policyTabs[tab].apply(current.Policy);
+                return ApiClient.updateUserPolicy(userId, current.Policy).then(() => current);
+            })
+            .then((current) => {
+                user = current;
+                policyTabs[tab].fill(user.Policy);
+                policySnapshots[tab] = JSON.stringify(policyTabs[tab].read());
+                renderTabDirty();
+                renderLiveTvWarnings();
+                renderHealth(pickedIds);
+                toast('Settings saved');
+            })
+            .catch((response) => {
+                // Jellyfin answers a refused change (the last administrator, for example) with its reason as text
+                const reason = response && typeof response.text === 'function' ? response.text() : Promise.resolve('');
+                return reason.catch(() => '').then((text) => {
+                    setLine(error, 'Couldn\'t save to Jellyfin' + (text ? ': ' + text : '.') + ' Nothing was changed.');
+                });
+            })
+            .finally(() => Dashboard.hideLoadingMsg());
+        return false;
     }
 
     function showMessage(text) {
@@ -506,6 +569,7 @@ export default function (view, params) {
 
     function renderDirty() {
         view.querySelector('.kidsUnsaved').hidden = !isDirty();
+        renderTabDirty();
     }
 
     function takeSnapshot() {
@@ -736,7 +800,8 @@ export default function (view, params) {
         renderSections();
         renderPicks();
         renderChannels();
-        renderHealth(profile.LiveTvChannelIds || []);
+        pickedIds = profile.LiveTvChannelIds || [];
+        renderHealth(pickedIds);
         takeSnapshot();
 
         if (picks.length === 0) {
@@ -936,8 +1001,15 @@ export default function (view, params) {
                 user = loadedUser;
                 config = loadedConfig;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
+                view.querySelectorAll('.kidsUserName').forEach((node) => {
+                    node.textContent = user.Name;
+                });
+                view.querySelectorAll('.kidsJellyfinUserLink').forEach((link) => {
+                    link.href = '#/dashboard/users/' + userId + '/profile';
+                });
                 serverChannels = serverList;
                 renderLiveTvWarnings();
+                fillPolicyTabs();
                 renderBreak();
                 return applyProfile(profile).then(() => {
                     selectTab(params.tab);
@@ -974,7 +1046,8 @@ export default function (view, params) {
             .then((profile) => {
                 revision = profile.Revision;
                 takeSnapshot();
-                renderHealth(profile.LiveTvChannelIds || []);
+                pickedIds = profile.LiveTvChannelIds || [];
+                renderHealth(pickedIds);
                 toast('Saved');
                 // The status follows the new allowance and sitting limit
                 return loadUsage();
@@ -1010,7 +1083,7 @@ export default function (view, params) {
 
     // Reloading or closing the tab with unsaved changes asks first; Jellyfin's own navigation cannot be held back
     const onBeforeUnload = (event) => {
-        if (isDirty()) {
+        if (isDirty() || Object.keys(policyTabs).some(policyTabDirty)) {
             event.preventDefault();
             event.returnValue = '';
         }
@@ -1035,6 +1108,11 @@ export default function (view, params) {
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(search, 300);
+    });
+    view.querySelectorAll('.kidsPolicyForm').forEach((policyForm) => {
+        policyForm.addEventListener('submit', (event) => savePolicyTab(policyForm.dataset.tab, event));
+        policyForm.addEventListener('input', renderTabDirty);
+        policyForm.addEventListener('change', renderTabDirty);
     });
     view.querySelectorAll('.kidsTab').forEach((button) => {
         button.addEventListener('click', () => selectTab(button.dataset.tab));
