@@ -97,6 +97,23 @@ function setLine(node, text) {
     node.hidden = !text;
 }
 
+// Jellyfin answers a refused policy change (the last administrator, for example) with its reason as a JSON string,
+// and some refusals with problem details; anything else is shown as it came
+function refusalText(body) {
+    let parsed;
+    try {
+        parsed = JSON.parse(body);
+    } catch (error) {
+        return body;
+    }
+
+    if (typeof parsed === 'string') {
+        return parsed;
+    }
+
+    return (parsed && (parsed.detail || parsed.title)) || '';
+}
+
 // Shared with kids.js (the two pages are separate modules): avatars, wording, health, live TV state and the server
 // clock
 
@@ -478,9 +495,8 @@ export default function (view, params) {
                 toast('Settings saved');
             })
             .catch((response) => {
-                // Jellyfin answers a refused change (the last administrator, for example) with its reason as text
                 const reason = response && typeof response.text === 'function' ? response.text() : Promise.resolve('');
-                return reason.catch(() => '').then((text) => {
+                return reason.catch(() => '').then(refusalText).then((text) => {
                     setLine(error, 'Couldn\'t save to Jellyfin' + (text ? ': ' + text : '.') + ' Nothing was changed.');
                 });
             })
