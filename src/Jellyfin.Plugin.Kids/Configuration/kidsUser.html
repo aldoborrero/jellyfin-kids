@@ -258,7 +258,24 @@
                         </div>
                         <div class="kidsPanel" id="kidsPanel-profile" data-tab="profile" role="tabpanel" aria-labelledby="kidsTab-profile" hidden></div>
                         <div class="kidsPanel" id="kidsPanel-access" data-tab="access" role="tabpanel" aria-labelledby="kidsTab-access" hidden></div>
-                        <div class="kidsPanel" id="kidsPanel-parental" data-tab="parental" role="tabpanel" aria-labelledby="kidsTab-parental" hidden></div>
+                        <div class="kidsPanel" id="kidsPanel-parental" data-tab="parental" role="tabpanel" aria-labelledby="kidsTab-parental" hidden>
+                            <form class="kidsPolicyForm" data-tab="parental">
+                                <p class="fieldDescription kidsAccountNote">These are <span class="kidsUserName"></span>'s Jellyfin account settings, the same as in Dashboard → Users. <a is="emby-linkbutton" class="button-link kidsJellyfinUserLink" href="#">More settings in Jellyfin</a></p>
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsMaxRating">Maximum allowed parental rating</label>
+                                    <select is="emby-select" id="kidsMaxRating" class="emby-select-withcolor emby-select kidsMaxRating" aria-describedby="kidsMaxRatingHelp"></select>
+                                    <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                                    <div class="fieldDescription" id="kidsMaxRatingHelp">Content with a higher rating is hidden from this kid.</div>
+                                </div>
+                                <div class="verticalSection">
+                                    <h3 class="checkboxListLabel">Block items with no or unrecognized rating information</h3>
+                                    <div class="checkboxList paperList kidsUnrated"></div>
+                                </div>
+                                <p class="kidsFormError" role="status" aria-live="polite" hidden></p>
+                                <p class="kidsUnsaved" role="status" aria-live="polite" hidden>Unsaved changes</p>
+                                <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>

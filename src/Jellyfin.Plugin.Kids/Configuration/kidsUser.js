@@ -318,6 +318,61 @@ function scheduleText(schedule) {
     return (scheduleDays[day] || String(day)) + ' ' + hourText(schedule.StartHour) + '–' + hourText(schedule.EndHour);
 }
 
+// Jellyfin's ratings, one entry per score as jellyfin-web lists them ("G/TV-G"): { name, score, subScore }. "Unrated"
+// has no score, so as a maximum it would mean no maximum: "None" already says that.
+function groupRatings(ratings) {
+    const groups = [];
+    for (const rating of ratings || []) {
+        if (!rating.RatingScore) {
+            continue;
+        }
+
+        const score = rating.RatingScore.score;
+        const subScore = rating.RatingScore.subScore !== undefined ? rating.RatingScore.subScore : null;
+        const last = groups[groups.length - 1];
+        if (last && last.score === score && last.subScore === subScore) {
+            last.name += '/' + rating.Name;
+        } else {
+            groups.push({ name: rating.Name, score, subScore });
+        }
+    }
+
+    return groups;
+}
+
+// The group a policy's maximum stands for, as jellyfin-web picks it: the exact score and sub score, else the highest
+// score at or under the maximum. -1 when there is no maximum.
+function ratingIndex(groups, policy) {
+    if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
+        return -1;
+    }
+
+    const subScore = policy.MaxParentalSubRating === undefined ? null : policy.MaxParentalSubRating;
+    const exact = groups.findIndex((group) => group.score === policy.MaxParentalRating && group.subScore === subScore);
+    if (exact >= 0) {
+        return exact;
+    }
+
+    let index = -1;
+    groups.forEach((group, i) => {
+        if (group.score !== null && group.score <= policy.MaxParentalRating) {
+            index = i;
+        }
+    });
+    return index;
+}
+
+// The item types Jellyfin can block when unrated, in jellyfin-web's order
+const unratedTypes = [
+    { id: 'Book', name: 'Books' },
+    { id: 'ChannelContent', name: 'Channels' },
+    { id: 'LiveTvChannel', name: 'Live TV' },
+    { id: 'Movie', name: 'Movies' },
+    { id: 'Music', name: 'Music' },
+    { id: 'Trailer', name: 'Trailers' },
+    { id: 'Series', name: 'Shows' }
+];
+
 // The plugin id is looked up by name, so this anonymously served file holds no id
 function pluginConfiguration() {
     return ApiClient.getJSON(ApiClient.getUrl('Plugins'))
@@ -353,6 +408,7 @@ export default function (view, params) {
     let config = null; // the plugin configuration, for the day start and the break; null when unreadable
     let snapshot = null; // what Save would send, as loaded or last saved
     let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
+    let ratingGroups = []; // the server's parental ratings, grouped by score, for the Parental control tab
 
     // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
     const tabNames = ['kids', 'profile', 'access', 'parental'];
@@ -429,6 +485,53 @@ export default function (view, params) {
             .finally(() => Dashboard.hideLoadingMsg());
         return false;
     }
+
+    // Parental control: the maximum rating ("None" for no maximum) and the unrated types to block
+    function renderRatings(selected) {
+        const select = view.querySelector('.kidsMaxRating');
+        const none = element('option', null, 'None');
+        none.value = '-1';
+        select.replaceChildren(none, ...ratingGroups.map((group, index) => {
+            const option = element('option', null, group.name);
+            option.value = String(index);
+            return option;
+        }));
+        select.value = String(selected);
+    }
+
+    function renderUnrated(blocked) {
+        const set = new Set(blocked);
+        view.querySelector('.kidsUnrated').replaceChildren(...unratedTypes.map((type) => {
+            const label = element('label');
+            const checkbox = element('input', 'kidsUnratedType');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.dataset.type = type.id;
+            checkbox.checked = set.has(type.id);
+            label.append(checkbox, element('span', null, type.name));
+            return label;
+        }));
+    }
+
+    policyTabs.parental = {
+        read: () => ({
+            rating: Number(view.querySelector('.kidsMaxRating').value),
+            unrated: [...view.querySelectorAll('.kidsUnratedType')].filter((box) => box.checked).map((box) => box.dataset.type)
+        }),
+        fill: (policy) => {
+            renderRatings(ratingIndex(ratingGroups, policy));
+            renderUnrated(policy.BlockUnratedItems || []);
+        },
+        apply: (policy) => {
+            const fields = policyTabs.parental.read();
+            const group = ratingGroups[fields.rating];
+            policy.MaxParentalRating = group ? group.score : null;
+            policy.MaxParentalSubRating = group ? group.subScore : null;
+            // Types this page doesn't list (a later Jellyfin's) stay as they were
+            const known = new Set(unratedTypes.map((type) => type.id));
+            policy.BlockUnratedItems = (policy.BlockUnratedItems || []).filter((type) => !known.has(type)).concat(fields.unrated);
+        }
+    };
 
     function showMessage(text) {
         const message = view.querySelector('.kidsMessage');
@@ -996,10 +1099,17 @@ export default function (view, params) {
         // Asked for this kid, so each channel also says whether Jellyfin hides it from them
         const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels?userId=' + encodeURIComponent(userId)).catch(() => null);
         const household = pluginConfiguration().catch(() => null);
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household])
-            .then(([profile, loadedUser, serverList, loadedConfig]) => {
+        return Promise.all([
+            request('GET', 'Kids/Users/' + userId + '/Profile'),
+            ApiClient.getUser(userId),
+            liveTvChannels,
+            household,
+            ApiClient.getParentalRatings().then(groupRatings)
+        ])
+            .then(([profile, loadedUser, serverList, loadedConfig, loadedRatings]) => {
                 user = loadedUser;
                 config = loadedConfig;
+                ratingGroups = loadedRatings;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 view.querySelectorAll('.kidsUserName').forEach((node) => {
                     node.textContent = user.Name;
