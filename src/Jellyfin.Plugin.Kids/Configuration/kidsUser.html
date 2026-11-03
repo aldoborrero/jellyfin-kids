@@ -62,6 +62,7 @@
             #KidsUserPage .kidsTabUnsaved[hidden] { display: none; }
             #KidsUserPage .kidsAccountNote { margin: 0 0 1.5em; }
             #KidsUserPage .kidsAdminBlock[hidden] { display: none; }
+            #KidsUserPage .kidsFolderBlock[hidden] { display: none; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -290,7 +291,25 @@
                                 </button>
                             </form>
                         </div>
-                        <div class="kidsPanel" id="kidsPanel-access" data-tab="access" role="tabpanel" aria-labelledby="kidsTab-access" hidden></div>
+                        <div class="kidsPanel" id="kidsPanel-access" data-tab="access" role="tabpanel" aria-labelledby="kidsTab-access" hidden>
+                            <form class="kidsPolicyForm" data-tab="access">
+                                <p class="fieldDescription kidsAccountNote">These are <span class="kidsUserName"></span>'s Jellyfin account settings, the same as in Dashboard → Users. <a is="emby-linkbutton" class="button-link kidsJellyfinUserLink" href="#">More settings in Jellyfin</a></p>
+                                <div class="checkboxContainer">
+                                    <label>
+                                        <input is="emby-checkbox" type="checkbox" class="kidsAllFolders" />
+                                        <span>Enable access to all libraries</span>
+                                    </label>
+                                </div>
+                                <div class="kidsFolderBlock">
+                                    <h3 class="checkboxListLabel">Libraries</h3>
+                                    <div class="checkboxList paperList kidsFolders"></div>
+                                    <p class="fieldDescription">The libraries this kid sees, on every app.</p>
+                                </div>
+                                <p class="kidsFormError" role="status" aria-live="polite" hidden></p>
+                                <p class="kidsUnsaved" role="status" aria-live="polite" hidden>Unsaved changes</p>
+                                <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+                            </form>
+                        </div>
                         <div class="kidsPanel" id="kidsPanel-parental" data-tab="parental" role="tabpanel" aria-labelledby="kidsTab-parental" hidden></div>
                     </div>
                 </div>

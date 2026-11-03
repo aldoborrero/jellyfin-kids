@@ -353,6 +353,7 @@ export default function (view, params) {
     let config = null; // the plugin configuration, for the day start and the break; null when unreadable
     let snapshot = null; // what Save would send, as loaded or last saved
     let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
+    let mediaFolders = []; // the server's libraries: { Id, Name }
 
     // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
     const tabNames = ['kids', 'profile', 'access', 'parental'];
@@ -449,6 +450,44 @@ export default function (view, params) {
             policy.IsAdministrator = Boolean(policy.IsAdministrator) && fields.admin;
             policy.EnableLiveTvAccess = fields.liveTv;
             policy.EnableContentDownloading = fields.downloads;
+        }
+    };
+
+    // Access: all libraries, or the ticked ones. A stored library the list doesn't show (hidden, or gone from the
+    // server) has no box, so it is kept as it came
+    function renderFolders(enabledIds) {
+        const enabled = new Set(enabledIds);
+        view.querySelector('.kidsFolders').replaceChildren(...mediaFolders.map((folder) => {
+            const label = element('label');
+            const checkbox = element('input', 'kidsFolder');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.dataset.id = folder.Id;
+            checkbox.checked = enabled.has(folder.Id);
+            label.append(checkbox, element('span', null, folder.Name));
+            return label;
+        }));
+    }
+
+    function renderFolderBlock() {
+        view.querySelector('.kidsFolderBlock').hidden = view.querySelector('.kidsAllFolders').checked;
+    }
+
+    policyTabs.access = {
+        read: () => ({
+            all: view.querySelector('.kidsAllFolders').checked,
+            folders: [...view.querySelectorAll('.kidsFolder')].filter((box) => box.checked).map((box) => box.dataset.id)
+        }),
+        fill: (policy) => {
+            view.querySelector('.kidsAllFolders').checked = Boolean(policy.EnableAllFolders);
+            renderFolders(policy.EnabledFolders || []);
+            renderFolderBlock();
+        },
+        apply: (policy) => {
+            const fields = policyTabs.access.read();
+            const shown = new Set(mediaFolders.map((folder) => folder.Id));
+            policy.EnableAllFolders = fields.all;
+            policy.EnabledFolders = fields.all ? [] : fields.folders.concat((policy.EnabledFolders || []).filter((id) => !shown.has(id)));
         }
     };
 
@@ -1018,10 +1057,14 @@ export default function (view, params) {
         // Asked for this kid, so each channel also says whether Jellyfin hides it from them
         const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels?userId=' + encodeURIComponent(userId)).catch(() => null);
         const household = pluginConfiguration().catch(() => null);
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household])
-            .then(([profile, loadedUser, serverList, loadedConfig]) => {
+        // Required, like the user: without them the Access tab could not show the kid's libraries
+        const libraries = ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders', { IsHidden: false }))
+            .then((result) => result.Items || []);
+        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household, libraries])
+            .then(([profile, loadedUser, serverList, loadedConfig, loadedFolders]) => {
                 user = loadedUser;
                 config = loadedConfig;
+                mediaFolders = loadedFolders;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 view.querySelectorAll('.kidsUserName').forEach((node) => {
                     node.textContent = user.Name;
@@ -1159,6 +1202,7 @@ export default function (view, params) {
             conflictProfile = null;
         }
     });
+    view.querySelector('.kidsAllFolders').addEventListener('change', renderFolderBlock);
     view.addEventListener('viewshow', () => {
         window.addEventListener('beforeunload', onBeforeUnload);
         load();
