@@ -318,6 +318,61 @@ function scheduleText(schedule) {
     return (scheduleDays[day] || String(day)) + ' ' + hourText(schedule.StartHour) + '–' + hourText(schedule.EndHour);
 }
 
+// Jellyfin's ratings, one entry per score as jellyfin-web lists them ("G/TV-G"): { name, score, subScore }. "Unrated"
+// has no score, so as a maximum it would mean no maximum: "None" already says that.
+function groupRatings(ratings) {
+    const groups = [];
+    for (const rating of ratings || []) {
+        if (!rating.RatingScore) {
+            continue;
+        }
+
+        const score = rating.RatingScore.score;
+        const subScore = rating.RatingScore.subScore !== undefined ? rating.RatingScore.subScore : null;
+        const last = groups[groups.length - 1];
+        if (last && last.score === score && last.subScore === subScore) {
+            last.name += '/' + rating.Name;
+        } else {
+            groups.push({ name: rating.Name, score, subScore });
+        }
+    }
+
+    return groups;
+}
+
+// The group a policy's maximum stands for, as jellyfin-web picks it: the exact score and sub score, else the highest
+// score at or under the maximum. -1 when there is no maximum.
+function ratingIndex(groups, policy) {
+    if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
+        return -1;
+    }
+
+    const subScore = policy.MaxParentalSubRating === undefined ? null : policy.MaxParentalSubRating;
+    const exact = groups.findIndex((group) => group.score === policy.MaxParentalRating && group.subScore === subScore);
+    if (exact >= 0) {
+        return exact;
+    }
+
+    let index = -1;
+    groups.forEach((group, i) => {
+        if (group.score !== null && group.score <= policy.MaxParentalRating) {
+            index = i;
+        }
+    });
+    return index;
+}
+
+// The item types Jellyfin can block when unrated, in jellyfin-web's order
+const unratedTypes = [
+    { id: 'Book', name: 'Books' },
+    { id: 'ChannelContent', name: 'Channels' },
+    { id: 'LiveTvChannel', name: 'Live TV' },
+    { id: 'Movie', name: 'Movies' },
+    { id: 'Music', name: 'Music' },
+    { id: 'Trailer', name: 'Trailers' },
+    { id: 'Series', name: 'Shows' }
+];
+
 // The plugin id is looked up by name, so this anonymously served file holds no id
 function pluginConfiguration() {
     return ApiClient.getJSON(ApiClient.getUrl('Plugins'))
@@ -354,6 +409,8 @@ export default function (view, params) {
     let snapshot = null; // what Save would send, as loaded or last saved
     let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
     let mediaFolders = []; // the server's libraries: { Id, Name }
+    let ratingGroups = []; // the server's parental ratings, grouped by score, for the Parental control tab
+    let schedules = []; // the Parental control tab's allowed hours: { DayOfWeek, StartHour, EndHour }
 
     // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
     const tabNames = ['kids', 'profile', 'access', 'parental'];
@@ -488,6 +545,123 @@ export default function (view, params) {
             const shown = new Set(mediaFolders.map((folder) => folder.Id));
             policy.EnableAllFolders = fields.all;
             policy.EnabledFolders = fields.all ? [] : fields.folders.concat((policy.EnabledFolders || []).filter((id) => !shown.has(id)));
+        }
+    };
+
+    // Parental control: the maximum rating ("None" for no maximum), the unrated types to block and the allowed hours
+    function renderRatings(selected) {
+        const select = view.querySelector('.kidsMaxRating');
+        const none = element('option', null, 'None');
+        none.value = '-1';
+        select.replaceChildren(none, ...ratingGroups.map((group, index) => {
+            const option = element('option', null, group.name);
+            option.value = String(index);
+            return option;
+        }));
+        select.value = String(selected);
+    }
+
+    function renderUnrated(blocked) {
+        const set = new Set(blocked);
+        view.querySelector('.kidsUnrated').replaceChildren(...unratedTypes.map((type) => {
+            const label = element('label');
+            const checkbox = element('input', 'kidsUnratedType');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.dataset.type = type.id;
+            checkbox.checked = set.has(type.id);
+            label.append(checkbox, element('span', null, type.name));
+            return label;
+        }));
+    }
+
+    function renderSchedules() {
+        const list = view.querySelector('.kidsSchedules');
+        if (schedules.length === 0) {
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Any time: no allowed hours are set.'));
+            return;
+        }
+
+        list.replaceChildren(...schedules.map((schedule, index) => {
+            const item = row('listItem-border');
+            const body = element('div', 'listItemBody');
+            body.append(element('div', 'listItemBodyText', scheduleText(schedule)));
+            item.append(body, iconButton('delete', 'Remove ' + scheduleText(schedule), () => {
+                schedules.splice(index, 1);
+                renderSchedules();
+                renderTabDirty();
+            }));
+            return item;
+        }));
+    }
+
+    const scheduleDialog = view.querySelector('.kidsScheduleDialog');
+
+    function hourOptions(select, from, to) {
+        const options = [];
+        for (let hour = from; hour <= to; hour += 0.5) {
+            const option = element('option', null, hourText(hour));
+            option.value = String(hour);
+            options.push(option);
+        }
+
+        select.replaceChildren(...options);
+    }
+
+    function openScheduleDialog() {
+        const day = view.querySelector('.kidsScheduleDay');
+        day.replaceChildren(...['Everyday', 'Weekday', 'Weekend', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            .map((id) => {
+                const option = element('option', null, scheduleDays[id]);
+                option.value = id;
+                return option;
+            }));
+        hourOptions(view.querySelector('.kidsScheduleStart'), 0, 23.5);
+        hourOptions(view.querySelector('.kidsScheduleEnd'), 0.5, 24);
+        view.querySelector('.kidsScheduleStart').value = '8';
+        view.querySelector('.kidsScheduleEnd').value = '20';
+        setLine(view.querySelector('.kidsScheduleError'), null);
+        scheduleDialog.showModal();
+    }
+
+    function addSchedule(event) {
+        event.preventDefault();
+        const start = Number(view.querySelector('.kidsScheduleStart').value);
+        const end = Number(view.querySelector('.kidsScheduleEnd').value);
+        if (end <= start) {
+            setLine(view.querySelector('.kidsScheduleError'), 'The end must be after the start.');
+            return;
+        }
+
+        schedules.push({ DayOfWeek: view.querySelector('.kidsScheduleDay').value, StartHour: start, EndHour: end });
+        scheduleDialog.close();
+        renderSchedules();
+        renderTabDirty();
+    }
+
+    policyTabs.parental = {
+        read: () => ({
+            rating: Number(view.querySelector('.kidsMaxRating').value),
+            unrated: [...view.querySelectorAll('.kidsUnratedType')].filter((box) => box.checked).map((box) => box.dataset.type),
+            schedules: schedules.map((s) => [s.DayOfWeek, s.StartHour, s.EndHour])
+        }),
+        fill: (policy) => {
+            renderRatings(ratingIndex(ratingGroups, policy));
+            renderUnrated(policy.BlockUnratedItems || []);
+            // The server's DayOfWeek is kept as it came (a name; scheduleText reads a number too). Jellyfin assigns
+            // the Id and UserId of each new entry, as with jellyfin-web's dialog.
+            schedules = (policy.AccessSchedules || []).map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
+            renderSchedules();
+        },
+        apply: (policy) => {
+            const fields = policyTabs.parental.read();
+            const group = ratingGroups[fields.rating];
+            policy.MaxParentalRating = group ? group.score : null;
+            policy.MaxParentalSubRating = group ? group.subScore : null;
+            // Types this page doesn't list (a later Jellyfin's) stay as they were
+            const known = new Set(unratedTypes.map((type) => type.id));
+            policy.BlockUnratedItems = (policy.BlockUnratedItems || []).filter((type) => !known.has(type)).concat(fields.unrated);
+            policy.AccessSchedules = schedules.map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
         }
     };
 
@@ -1060,11 +1234,19 @@ export default function (view, params) {
         // Required, like the user: without them the Access tab could not show the kid's libraries
         const libraries = ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders', { IsHidden: false }))
             .then((result) => result.Items || []);
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household, libraries])
-            .then(([profile, loadedUser, serverList, loadedConfig, loadedFolders]) => {
+        return Promise.all([
+            request('GET', 'Kids/Users/' + userId + '/Profile'),
+            ApiClient.getUser(userId),
+            liveTvChannels,
+            household,
+            libraries,
+            ApiClient.getParentalRatings().then(groupRatings)
+        ])
+            .then(([profile, loadedUser, serverList, loadedConfig, loadedFolders, loadedRatings]) => {
                 user = loadedUser;
                 config = loadedConfig;
                 mediaFolders = loadedFolders;
+                ratingGroups = loadedRatings;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
                 view.querySelectorAll('.kidsUserName').forEach((node) => {
                     node.textContent = user.Name;
@@ -1203,6 +1385,9 @@ export default function (view, params) {
         }
     });
     view.querySelector('.kidsAllFolders').addEventListener('change', renderFolderBlock);
+    view.querySelector('.kidsScheduleAdd').addEventListener('click', openScheduleDialog);
+    view.querySelector('.kidsScheduleForm').addEventListener('submit', addSchedule);
+    view.querySelector('.kidsScheduleCancel').addEventListener('click', () => scheduleDialog.close());
     view.addEventListener('viewshow', () => {
         window.addEventListener('beforeunload', onBeforeUnload);
         load();

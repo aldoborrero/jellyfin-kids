@@ -63,6 +63,10 @@
             #KidsUserPage .kidsAccountNote { margin: 0 0 1.5em; }
             #KidsUserPage .kidsAdminBlock[hidden] { display: none; }
             #KidsUserPage .kidsFolderBlock[hidden] { display: none; }
+            #KidsUserPage .kidsScheduleDialog { background: var(--jf-palette-background-paper, #202020); color: inherit; border: 0; border-radius: var(--jf-card-borderRadius, 0.2em); padding: 1.5em; width: min(24em, calc(100vw - 2em)); box-sizing: border-box; }
+            #KidsUserPage .kidsScheduleDialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+            #KidsUserPage .kidsDialogButtons { display: flex; justify-content: flex-end; gap: 0.75em; }
+            #KidsUserPage .kidsDialogButtons .emby-button { margin: 0; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -310,7 +314,54 @@
                                 <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
                             </form>
                         </div>
-                        <div class="kidsPanel" id="kidsPanel-parental" data-tab="parental" role="tabpanel" aria-labelledby="kidsTab-parental" hidden></div>
+                        <div class="kidsPanel" id="kidsPanel-parental" data-tab="parental" role="tabpanel" aria-labelledby="kidsTab-parental" hidden>
+                            <form class="kidsPolicyForm" data-tab="parental">
+                                <p class="fieldDescription kidsAccountNote">These are <span class="kidsUserName"></span>'s Jellyfin account settings, the same as in Dashboard → Users. <a is="emby-linkbutton" class="button-link kidsJellyfinUserLink" href="#">More settings in Jellyfin</a></p>
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsMaxRating">Maximum allowed parental rating</label>
+                                    <select is="emby-select" id="kidsMaxRating" class="emby-select-withcolor emby-select kidsMaxRating" aria-describedby="kidsMaxRatingHelp"></select>
+                                    <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                                    <div class="fieldDescription" id="kidsMaxRatingHelp">Content with a higher rating is hidden from this kid.</div>
+                                </div>
+                                <div class="verticalSection">
+                                    <h3 class="checkboxListLabel">Block items with no or unrecognized rating information</h3>
+                                    <div class="checkboxList paperList kidsUnrated"></div>
+                                </div>
+                                <div class="verticalSection">
+                                    <div class="sectionTitleContainer flex align-items-center">
+                                        <h3 class="sectionTitle">Allowed hours</h3>
+                                        <button is="emby-button" type="button" class="raised kidsScheduleAdd"><span>Add</span></button>
+                                    </div>
+                                    <p class="fieldDescription">In server time. Outside them the kid can't sign in or play on any app; with enforcement on, playing stops when they end.</p>
+                                    <div class="kidsSchedules paperList"></div>
+                                </div>
+                                <p class="kidsFormError" role="status" aria-live="polite" hidden></p>
+                                <p class="kidsUnsaved" role="status" aria-live="polite" hidden>Unsaved changes</p>
+                                <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+                            </form>
+                        </div>
+                        <dialog class="kidsScheduleDialog" aria-labelledby="kidsScheduleDialogTitle">
+                            <form method="dialog" class="kidsScheduleForm">
+                                <h3 id="kidsScheduleDialogTitle">Allowed hours</h3>
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsScheduleDay">Day</label>
+                                    <select is="emby-select" id="kidsScheduleDay" class="emby-select-withcolor emby-select kidsScheduleDay"></select>
+                                </div>
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsScheduleStart">Start</label>
+                                    <select is="emby-select" id="kidsScheduleStart" class="emby-select-withcolor emby-select kidsScheduleStart"></select>
+                                </div>
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="kidsScheduleEnd">End</label>
+                                    <select is="emby-select" id="kidsScheduleEnd" class="emby-select-withcolor emby-select kidsScheduleEnd"></select>
+                                </div>
+                                <p class="kidsScheduleError kidsFormError" role="status" aria-live="polite" hidden></p>
+                                <div class="kidsDialogButtons">
+                                    <button is="emby-button" type="button" class="raised kidsScheduleCancel"><span>Cancel</span></button>
+                                    <button is="emby-button" type="submit" class="raised button-submit kidsScheduleSave"><span>Add</span></button>
+                                </div>
+                            </form>
+                        </dialog>
                     </div>
                 </div>
             </div>
