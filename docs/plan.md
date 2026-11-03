@@ -700,7 +700,9 @@ Spec `013-bonus-undo-break` (2026-10-26, plugin 0.0.9.0) gives bonuses ids and l
 minutes, and end the break after the sitting limit early, for the Peke TV app's "Add time" widget (API 1.2).
 Spec `014-kids-db-location` (2026-10-29, plugin 0.0.10.0) moves `kids.db` from `plugins/Jellyfin.Plugin.Kids/` (the
 default `DataFolderPath`, which an admin nearly deleted as a stray install) to `<DataPath>/kids/` with a verified,
-crash-safe move, a `README.txt` beside it and the location on the Kids page.
+crash-safe move, a `README.txt` beside it and the location on the Kids page. The kid editor tabs (2026-11-03, plugin
+0.0.11.0, design and plan in `docs/plans/`) add Profile, Access and Parental control tabs to the kid editor, which edit
+the kid's Jellyfin policy one tab at a time, so a kid is configured from one page.
 
 The Wholphin counterpart is a separate app feature (`ServerPluginSource`, detection, migration, the `Status` poller,
 and handling 403 `timeUp`). It can start after feature 2 and gain the allowance after feature 3.
