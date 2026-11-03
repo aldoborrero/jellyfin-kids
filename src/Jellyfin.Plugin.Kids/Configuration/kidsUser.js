@@ -430,6 +430,28 @@ export default function (view, params) {
         return false;
     }
 
+    // Profile. The administrator box shows only while the kid is one, so it can be turned off; the editor never makes a
+    // kid an administrator
+    policyTabs.profile = {
+        read: () => ({
+            admin: view.querySelector('.kidsIsAdministrator').checked,
+            liveTv: view.querySelector('.kidsLiveTvAccess').checked,
+            downloads: view.querySelector('.kidsDownloads').checked
+        }),
+        fill: (policy) => {
+            view.querySelector('.kidsAdminBlock').hidden = !policy.IsAdministrator;
+            view.querySelector('.kidsIsAdministrator').checked = Boolean(policy.IsAdministrator);
+            view.querySelector('.kidsLiveTvAccess').checked = policy.EnableLiveTvAccess !== false;
+            view.querySelector('.kidsDownloads').checked = Boolean(policy.EnableContentDownloading);
+        },
+        apply: (policy) => {
+            const fields = policyTabs.profile.read();
+            policy.IsAdministrator = Boolean(policy.IsAdministrator) && fields.admin;
+            policy.EnableLiveTvAccess = fields.liveTv;
+            policy.EnableContentDownloading = fields.downloads;
+        }
+    };
+
     function showMessage(text) {
         const message = view.querySelector('.kidsMessage');
         message.textContent = text || '';
