@@ -174,10 +174,6 @@ function deniedText(status, clock) {
     return 'Playback refused' + until + ': ' + reason + '.';
 }
 
-function userTab(userId, tab) {
-    return '#/dashboard/users/' + userId + '/' + tab;
-}
-
 // Picked channels that Jellyfin's own parental control hides from the kid. The server flags them
 // (Kids/Admin/LiveTvChannels?userId=), so the page never judges ratings itself; the rating and the policy only word
 // the fix (feature 12, research R5). None when the flags are unknown or live TV access is off (its own line).
@@ -205,13 +201,12 @@ function hiddenChannelIssues(user, pickedIds, flagged) {
             text = hidden + ' by Jellyfin\'s parental control, for example a blocked or missing tag. Check the Parental control tab.';
         }
 
-        return { text, href: userTab(user.Id, 'parentalcontrol') };
+        return { text, tab: 'parental' };
     });
 }
 
-// What still leaves a kid unprotected in their Jellyfin policy, each with where to fix it (research R2). Null when
-// the policy is unknown: never "no issue" then. In the editor the channel list is on the page, so "none picked" has
-// no link. flagged is the server's channel list for the kid, or null.
+// What still leaves a kid unprotected in their Jellyfin policy, each with the editor tab that fixes it (research R2).
+// Null when the policy is unknown: never "no issue" then. flagged is the server's channel list for the kid, or null.
 function healthIssues(user, pickedIds, serverChannels, flagged) {
     const policy = user && user.Policy;
     if (!policy) {
@@ -220,33 +215,33 @@ function healthIssues(user, pickedIds, serverChannels, flagged) {
 
     const issues = [];
     if (policy.IsAdministrator) {
-        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', tab: 'profile' });
     }
 
     if (policy.EnableAllFolders) {
-        issues.push({ text: 'Sees every library', href: userTab(user.Id, 'access') });
+        issues.push({ text: 'Sees every library', tab: 'access' });
     }
 
     if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
-        issues.push({ text: 'No maximum parental rating', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'No maximum parental rating', tab: 'parental' });
     }
 
     const blocked = policy.BlockUnratedItems || [];
     if (!blocked.includes('Movie') || !blocked.includes('Series')) {
-        issues.push({ text: 'Unrated movies and shows are not blocked', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'Unrated movies and shows are not blocked', tab: 'parental' });
     }
 
     const picked = (pickedIds || []).length;
     if (policy.EnableLiveTvAccess === false && picked > 0) {
-        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', tab: 'profile' });
     } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
-        issues.push({ text: 'Live TV access is on but no channels are picked', href: null });
+        issues.push({ text: 'Live TV access is on but no channels are picked', tab: 'kids' });
     }
 
     issues.push(...hiddenChannelIssues(user, pickedIds, flagged));
 
     if (policy.EnableContentDownloading) {
-        issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Downloads are allowed', tab: 'profile' });
     }
 
     return issues;

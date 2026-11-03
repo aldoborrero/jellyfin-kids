@@ -132,12 +132,9 @@ function usageText(status) {
     return status.TimeUp ? of + ' · time is up' : of + ' · ' + minutes(status.RemainingSeconds) + ' min left';
 }
 
-function userTab(userId, tab) {
-    return '#/dashboard/users/' + userId + '/' + tab;
-}
-
-function editorLink(userId) {
-    return '#/configurationpage?name=KidsUser&userId=' + encodeURIComponent(userId);
+// The kid editor, optionally on one of its tabs (kids, profile, access, parental)
+function editorLink(userId, tab) {
+    return '#/configurationpage?name=KidsUser&userId=' + encodeURIComponent(userId) + (tab ? '&tab=' + tab : '');
 }
 
 // Picked channels that Jellyfin's own parental control hides from the kid. The server flags them
@@ -167,7 +164,7 @@ function hiddenChannelIssues(user, pickedIds, flagged) {
             text = hidden + ' by Jellyfin\'s parental control, for example a blocked or missing tag. Check the Parental control tab.';
         }
 
-        return { text, href: userTab(user.Id, 'parentalcontrol') };
+        return { text, href: editorLink(user.Id, 'parental') };
     });
 }
 
@@ -181,33 +178,33 @@ function healthIssues(user, pickedIds, serverChannels, flagged) {
 
     const issues = [];
     if (policy.IsAdministrator) {
-        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', href: editorLink(user.Id, 'profile') });
     }
 
     if (policy.EnableAllFolders) {
-        issues.push({ text: 'Sees every library', href: userTab(user.Id, 'access') });
+        issues.push({ text: 'Sees every library', href: editorLink(user.Id, 'access') });
     }
 
     if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
-        issues.push({ text: 'No maximum parental rating', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'No maximum parental rating', href: editorLink(user.Id, 'parental') });
     }
 
     const blocked = policy.BlockUnratedItems || [];
     if (!blocked.includes('Movie') || !blocked.includes('Series')) {
-        issues.push({ text: 'Unrated movies and shows are not blocked', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'Unrated movies and shows are not blocked', href: editorLink(user.Id, 'parental') });
     }
 
     const picked = (pickedIds || []).length;
     if (policy.EnableLiveTvAccess === false && picked > 0) {
-        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', href: editorLink(user.Id, 'profile') });
     } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
-        issues.push({ text: 'Live TV access is on but no channels are picked', href: editorLink(user.Id), linkText: 'Pick' });
+        issues.push({ text: 'Live TV access is on but no channels are picked', href: editorLink(user.Id, 'kids'), linkText: 'Pick' });
     }
 
     issues.push(...hiddenChannelIssues(user, pickedIds, flagged));
 
     if (policy.EnableContentDownloading) {
-        issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Downloads are allowed', href: editorLink(user.Id, 'profile') });
     }
 
     return issues;
