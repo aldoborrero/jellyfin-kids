@@ -8,6 +8,14 @@
     "category": "Administration",
     "versions": [
       {
+        "version": "0.0.11.0",
+        "changelog": "Configure a kid from one place. The kid editor (Dashboard → Kids → a kid) now has four tabs: Kids, with the plugin's settings as before, and Profile, Access and Parental control, which repeat the parts of Jellyfin's own user pages that matter for a kid: Live TV access and downloads (and administrator, shown only so it can be turned off), which libraries the kid can see, the maximum rating, blocking unrated items and the allowed hours. Each tab saves on its own the way Jellyfin does: it reads the user again and changes only its own fields, so nothing else in the policy is lost, and a change Jellyfin refuses shows its reason in the tab. A tab with unsaved changes is marked. The Fix links of the protection check open the right tab, and each tab links to the kid in Jellyfin's Users pages. No API or database change.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/aldoborrero/jellyfin-kids/releases/download/v0.0.11.0/kids_0.0.11.0.zip",
+        "checksum": "5e53a187fe84c9e1994674641f03a43e",
+        "timestamp": "2026-11-04T15:15:13Z"
+      },
+      {
         "version": "0.0.10.0",
         "changelog": "The plugin's data moves to a safe place. The database (kid profiles, the parent code verifier, screen time, bonuses, channels and picks) used to live in plugins/Jellyfin.Plugin.Kids/, next to the plugin's install folder, where it looked like a stray old install. It now lives in data/kids/kids.db in Jellyfin's data folder, next to Jellyfin's own database (for example /var/lib/jellyfin/data/kids/, or /config/data/kids/ in Docker). On its first start this version moves it: it copies the database with SQLite's backup (pending write-ahead log changes included), checks the copy (integrity check, same schema version, same rows in every table), switches to it, and renames the old file kids.db.migrated-<date>, kept for one release. Every step is logged, and an interrupted move resumes at the next start. A locked or damaged old database is left untouched and nothing is created; if both folders hold a database the one written later is used and the other kept as kids.db.older-<date-time>, or the plugin refuses with an error when it cannot tell. A README.txt in the folder says what it is and not to delete it. Dashboard → Kids shows the data folder under Data (GET /Kids/Admin/Storage, administrators only). Jellyfin's own backup does not include plugin data: back up the folder (see docs/install.md, \"Your data\"). Downgrading to 0.0.9.0 starts with no kids unless you copy data/kids/kids.db back to plugins/Jellyfin.Plugin.Kids/ first.",
         "targetAbi": "12.0.0.0",
