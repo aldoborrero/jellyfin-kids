@@ -87,6 +87,21 @@ Expected: `GET /Kids/Profiles` no longer lists `bob`, and the log has an "Remove
    editor. It reports that the settings changed elsewhere and offers to load them. Nothing is overwritten
    (FR-026).
 6. Delete the picked playlist in Jellyfin and reopen the editor. The pick shows as missing and can be removed.
+7. The Jellyfin tabs, in `alice`'s editor:
+   - Each Fix in the health list opens the right tab (Profile, Access, Parental control or Kids), and its warning
+     goes away after saving there. From Dashboard → Kids, alice's Fix links open the editor on the same tabs.
+   - Profile, Access and Parental control each save their fields, and Dashboard → Users → alice shows the same
+     values.
+   - Nothing is lost: set an allowed tag and limit `alice` to one device in Jellyfin first, then save each Jellyfin
+     tab in the editor. Jellyfin still shows the tag and the device.
+   - An allowed-hours slot can be added and removed. With enforcement on, a slot ending in 2 minutes brings the
+     bedtime warning and stop as `alice`.
+   - Change `alice`'s policy from another browser tab, then save a Jellyfin tab here. The other change survives,
+     except for this tab's fields.
+   - The last administrator: make `bob` an administrator, sign in as `bob` and take administrator away from `admin`
+     in Jellyfin, so `bob` is the only one. In `bob`'s editor, untick the administrator box and save: Jellyfin's
+     refusal shows inline in the Profile tab, and nothing changes. Give `admin` administrator back afterwards.
+   - Check the tabs in the light and dark themes and at phone width: the tabs wrap and the dialog fits.
 
 ## 6. Restart persistence
 

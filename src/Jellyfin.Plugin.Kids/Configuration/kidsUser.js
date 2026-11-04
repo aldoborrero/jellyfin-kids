@@ -1,11 +1,12 @@
-// The kid settings editor: what still leaves the kid unprotected in Jellyfin (with links to fix it), picked live TV
-// channels that Jellyfin hides from them included; today's screen time with the server time, "Reset today" and, during
-// a break, "End break"; the daily allowance and the sitting limit, each with an explicit "No limit", and the household
-// break; bonus minutes and today's bonuses, with Undo inside their window; the allowed hours from Jellyfin
-// (read-only); the avatar; search, autoplay and its limit; home sections (order and visibility); the picked
-// collections and playlists; and the live TV channels the kid may watch. Saves with the loaded revision; a conflict
-// never overwrites. Bonus minutes, Undo, End break and Reset today apply straight away, apart from the save. Every
-// name is inserted as text; successes are confirmed with a toast.
+// The kid settings editor: what still leaves the kid unprotected in Jellyfin (each with the tab that fixes it), picked
+// live TV channels that Jellyfin hides from them included, above four tabs. Kids holds this plugin's settings: today's
+// screen time with the server time, "Reset today" and, during a break, "End break"; the daily allowance and the
+// sitting limit, each with an explicit "No limit", and the household break; bonus minutes and today's bonuses, with
+// Undo inside their window; the avatar; search, autoplay and its limit; home sections (order and visibility); the
+// picked collections and playlists; and the live TV channels the kid may watch. It saves with the loaded revision; a
+// conflict never overwrites. Bonus minutes, Undo, End break and Reset today apply straight away, apart from the save.
+// Profile, Access and Parental control edit the kid's Jellyfin policy, each saved on its own as jellyfin-web does.
+// Every name is inserted as text; successes are confirmed with a toast.
 
 const sectionNames = {
     KeepWatching: 'Keep watching',
@@ -96,6 +97,23 @@ function setLine(node, text) {
     node.hidden = !text;
 }
 
+// Jellyfin answers a refused policy change (the last administrator, for example) with its reason as a JSON string,
+// and some refusals with problem details; anything else is shown as it came
+function refusalText(body) {
+    let parsed;
+    try {
+        parsed = JSON.parse(body);
+    } catch (error) {
+        return body;
+    }
+
+    if (typeof parsed === 'string') {
+        return parsed;
+    }
+
+    return (parsed && (parsed.detail || parsed.title)) || '';
+}
+
 // Shared with kids.js (the two pages are separate modules): avatars, wording, health, live TV state and the server
 // clock
 
@@ -174,10 +192,6 @@ function deniedText(status, clock) {
     return 'Playback refused' + until + ': ' + reason + '.';
 }
 
-function userTab(userId, tab) {
-    return '#/dashboard/users/' + userId + '/' + tab;
-}
-
 // Picked channels that Jellyfin's own parental control hides from the kid. The server flags them
 // (Kids/Admin/LiveTvChannels?userId=), so the page never judges ratings itself; the rating and the policy only word
 // the fix (feature 12, research R5). None when the flags are unknown or live TV access is off (its own line).
@@ -205,13 +219,12 @@ function hiddenChannelIssues(user, pickedIds, flagged) {
             text = hidden + ' by Jellyfin\'s parental control, for example a blocked or missing tag. Check the Parental control tab.';
         }
 
-        return { text, href: userTab(user.Id, 'parentalcontrol') };
+        return { text, tab: 'parental' };
     });
 }
 
-// What still leaves a kid unprotected in their Jellyfin policy, each with where to fix it (research R2). Null when
-// the policy is unknown: never "no issue" then. In the editor the channel list is on the page, so "none picked" has
-// no link. flagged is the server's channel list for the kid, or null.
+// What still leaves a kid unprotected in their Jellyfin policy, each with the editor tab that fixes it (research R2).
+// Null when the policy is unknown: never "no issue" then. flagged is the server's channel list for the kid, or null.
 function healthIssues(user, pickedIds, serverChannels, flagged) {
     const policy = user && user.Policy;
     if (!policy) {
@@ -220,33 +233,33 @@ function healthIssues(user, pickedIds, serverChannels, flagged) {
 
     const issues = [];
     if (policy.IsAdministrator) {
-        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Administrator: bypasses every restriction. Use a non-admin account for this kid.', tab: 'profile' });
     }
 
     if (policy.EnableAllFolders) {
-        issues.push({ text: 'Sees every library', href: userTab(user.Id, 'access') });
+        issues.push({ text: 'Sees every library', tab: 'access' });
     }
 
     if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
-        issues.push({ text: 'No maximum parental rating', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'No maximum parental rating', tab: 'parental' });
     }
 
     const blocked = policy.BlockUnratedItems || [];
     if (!blocked.includes('Movie') || !blocked.includes('Series')) {
-        issues.push({ text: 'Unrated movies and shows are not blocked', href: userTab(user.Id, 'parentalcontrol') });
+        issues.push({ text: 'Unrated movies and shows are not blocked', tab: 'parental' });
     }
 
     const picked = (pickedIds || []).length;
     if (policy.EnableLiveTvAccess === false && picked > 0) {
-        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Live TV access is off in Jellyfin, so the picked channels don\'t play', tab: 'profile' });
     } else if (policy.EnableLiveTvAccess !== false && picked === 0 && serverChannels && serverChannels.length > 0) {
-        issues.push({ text: 'Live TV access is on but no channels are picked', href: null });
+        issues.push({ text: 'Live TV access is on but no channels are picked', tab: 'kids' });
     }
 
     issues.push(...hiddenChannelIssues(user, pickedIds, flagged));
 
     if (policy.EnableContentDownloading) {
-        issues.push({ text: 'Downloads are allowed', href: userTab(user.Id, 'profile') });
+        issues.push({ text: 'Downloads are allowed', tab: 'profile' });
     }
 
     return issues;
@@ -297,7 +310,7 @@ function serverClock(status, dayStartHour) {
     return { format, label, now: format(status.ServerTime) };
 }
 
-// Jellyfin's allowed hours (AccessSchedules), read-only: hours are decimal (8.5 is 08:30)
+// Jellyfin's allowed hours (AccessSchedules): hours are decimal (8.5 is 08:30)
 const scheduleDays = {
     Everyday: 'Every day',
     Weekday: 'Weekdays',
@@ -322,6 +335,61 @@ function scheduleText(schedule) {
     return (scheduleDays[day] || String(day)) + ' ' + hourText(schedule.StartHour) + '–' + hourText(schedule.EndHour);
 }
 
+// Jellyfin's ratings, one entry per score as jellyfin-web lists them ("G/TV-G"): { name, score, subScore }. "Unrated"
+// has no score, so as a maximum it would mean no maximum: "None" already says that.
+function groupRatings(ratings) {
+    const groups = [];
+    for (const rating of ratings || []) {
+        if (!rating.RatingScore) {
+            continue;
+        }
+
+        const score = rating.RatingScore.score;
+        const subScore = rating.RatingScore.subScore !== undefined ? rating.RatingScore.subScore : null;
+        const last = groups[groups.length - 1];
+        if (last && last.score === score && last.subScore === subScore) {
+            last.name += '/' + rating.Name;
+        } else {
+            groups.push({ name: rating.Name, score, subScore });
+        }
+    }
+
+    return groups;
+}
+
+// The group a policy's maximum stands for, as jellyfin-web picks it: the exact score and sub score, else the highest
+// score at or under the maximum. -1 when there is no maximum.
+function ratingIndex(groups, policy) {
+    if (policy.MaxParentalRating === undefined || policy.MaxParentalRating === null) {
+        return -1;
+    }
+
+    const subScore = policy.MaxParentalSubRating === undefined ? null : policy.MaxParentalSubRating;
+    const exact = groups.findIndex((group) => group.score === policy.MaxParentalRating && group.subScore === subScore);
+    if (exact >= 0) {
+        return exact;
+    }
+
+    let index = -1;
+    groups.forEach((group, i) => {
+        if (group.score !== null && group.score <= policy.MaxParentalRating) {
+            index = i;
+        }
+    });
+    return index;
+}
+
+// The item types Jellyfin can block when unrated, in jellyfin-web's order
+const unratedTypes = [
+    { id: 'Book', name: 'Books' },
+    { id: 'ChannelContent', name: 'Channels' },
+    { id: 'LiveTvChannel', name: 'Live TV' },
+    { id: 'Movie', name: 'Movies' },
+    { id: 'Music', name: 'Music' },
+    { id: 'Trailer', name: 'Trailers' },
+    { id: 'Series', name: 'Shows' }
+];
+
 // The plugin id is looked up by name, so this anonymously served file holds no id
 function pluginConfiguration() {
     return ApiClient.getJSON(ApiClient.getUrl('Plugins'))
@@ -338,6 +406,7 @@ function pluginConfiguration() {
 export default function (view, params) {
     const userId = params.userId;
     const form = view.querySelector('.kidsUserForm');
+    const editor = view.querySelector('.kidsEditor');
     const capInput = view.querySelector('.kidsAutoplayCap');
     const autoplayInput = view.querySelector('.kidsAutoplayEnabled');
     const searchInput = view.querySelector('.kidsPickSearch');
@@ -355,6 +424,262 @@ export default function (view, params) {
     let user = null;
     let config = null; // the plugin configuration, for the day start and the break; null when unreadable
     let snapshot = null; // what Save would send, as loaded or last saved
+    let pickedIds = []; // the live TV channels as last loaded or saved, for the health lines
+    let mediaFolders = []; // the server's libraries: { Id, Name }
+    let ratingGroups = []; // the server's parental ratings, grouped by score, for the Parental control tab
+    let schedules = []; // the Parental control tab's allowed hours: { DayOfWeek, StartHour, EndHour }
+
+    // Kids is this plugin's own settings; Profile, Access and Parental control edit the kid's Jellyfin policy
+    const tabNames = ['kids', 'profile', 'access', 'parental'];
+
+    function selectTab(name) {
+        const tab = tabNames.includes(name) ? name : 'kids';
+        view.querySelectorAll('.kidsTab').forEach((button) => {
+            button.setAttribute('aria-selected', String(button.dataset.tab === tab));
+            button.tabIndex = button.dataset.tab === tab ? 0 : -1;
+        });
+        view.querySelectorAll('.kidsPanel').forEach((panel) => {
+            panel.hidden = panel.dataset.tab !== tab;
+        });
+    }
+
+    // The Jellyfin tabs. Each has read() (its fields from the form, for unsaved changes), fill(policy) (the form from
+    // a policy) and apply(policy) (its fields into a policy, the others untouched); each registers itself below
+    const policyTabs = {};
+    const policySnapshots = {};
+
+    function policyTabDirty(tab) {
+        return policySnapshots[tab] !== undefined && JSON.stringify(policyTabs[tab].read()) !== policySnapshots[tab];
+    }
+
+    function renderTabDirty() {
+        view.querySelectorAll('.kidsTab').forEach((button) => {
+            const tab = button.dataset.tab;
+            const dirty = tab === 'kids' ? isDirty() : policyTabs[tab] !== undefined && policyTabDirty(tab);
+            button.querySelector('.kidsTabUnsaved').hidden = !dirty;
+            const unsaved = view.querySelector('.kidsPanel[data-tab="' + tab + '"] .kidsUnsaved');
+            if (unsaved) {
+                unsaved.hidden = !dirty;
+            }
+        });
+    }
+
+    function fillPolicyTabs() {
+        for (const [tab, entry] of Object.entries(policyTabs)) {
+            entry.fill(user.Policy);
+            policySnapshots[tab] = JSON.stringify(entry.read());
+        }
+
+        renderTabDirty();
+    }
+
+    // Like jellyfin-web's user tabs: read the user again so the write starts from the current policy, change only this
+    // tab's fields, and send the whole policy back. Fields no tab shows (tags, devices, …) go back as they came.
+    function savePolicyTab(tab, event) {
+        event.preventDefault();
+        const error = view.querySelector('.kidsPanel[data-tab="' + tab + '"] .kidsFormError');
+        setLine(error, null);
+        Dashboard.showLoadingMsg();
+        ApiClient.getUser(userId)
+            .then((current) => {
+                policyTabs[tab].apply(current.Policy);
+                return ApiClient.updateUserPolicy(userId, current.Policy).then(() => current);
+            })
+            .then((current) => {
+                user = current;
+                policyTabs[tab].fill(user.Policy);
+                policySnapshots[tab] = JSON.stringify(policyTabs[tab].read());
+                renderTabDirty();
+                renderLiveTvWarnings();
+                renderHealth(pickedIds);
+                toast('Settings saved');
+            })
+            .catch((response) => {
+                const reason = response && typeof response.text === 'function' ? response.text() : Promise.resolve('');
+                return reason.catch(() => '').then(refusalText).then((text) => {
+                    setLine(error, 'Couldn\'t save to Jellyfin' + (text ? ': ' + text : '.') + ' Nothing was changed.');
+                });
+            })
+            .finally(() => Dashboard.hideLoadingMsg());
+        return false;
+    }
+
+    // Profile. The administrator box shows only while the kid is one, so it can be turned off; the editor never makes a
+    // kid an administrator
+    policyTabs.profile = {
+        read: () => ({
+            admin: view.querySelector('.kidsIsAdministrator').checked,
+            liveTv: view.querySelector('.kidsLiveTvAccess').checked,
+            downloads: view.querySelector('.kidsDownloads').checked
+        }),
+        fill: (policy) => {
+            view.querySelector('.kidsAdminBlock').hidden = !policy.IsAdministrator;
+            view.querySelector('.kidsIsAdministrator').checked = Boolean(policy.IsAdministrator);
+            view.querySelector('.kidsLiveTvAccess').checked = policy.EnableLiveTvAccess !== false;
+            view.querySelector('.kidsDownloads').checked = Boolean(policy.EnableContentDownloading);
+        },
+        apply: (policy) => {
+            const fields = policyTabs.profile.read();
+            policy.IsAdministrator = Boolean(policy.IsAdministrator) && fields.admin;
+            policy.EnableLiveTvAccess = fields.liveTv;
+            policy.EnableContentDownloading = fields.downloads;
+        }
+    };
+
+    // Access: all libraries, or the ticked ones. A stored library the list doesn't show (hidden, or gone from the
+    // server) has no box, so it is kept as it came
+    function renderFolders(enabledIds) {
+        const enabled = new Set(enabledIds);
+        view.querySelector('.kidsFolders').replaceChildren(...mediaFolders.map((folder) => {
+            const label = element('label');
+            const checkbox = element('input', 'kidsFolder');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.dataset.id = folder.Id;
+            checkbox.checked = enabled.has(folder.Id);
+            label.append(checkbox, element('span', null, folder.Name));
+            return label;
+        }));
+    }
+
+    function renderFolderBlock() {
+        view.querySelector('.kidsFolderBlock').hidden = view.querySelector('.kidsAllFolders').checked;
+    }
+
+    policyTabs.access = {
+        read: () => ({
+            all: view.querySelector('.kidsAllFolders').checked,
+            folders: [...view.querySelectorAll('.kidsFolder')].filter((box) => box.checked).map((box) => box.dataset.id)
+        }),
+        fill: (policy) => {
+            view.querySelector('.kidsAllFolders').checked = Boolean(policy.EnableAllFolders);
+            renderFolders(policy.EnabledFolders || []);
+            renderFolderBlock();
+        },
+        apply: (policy) => {
+            const fields = policyTabs.access.read();
+            const shown = new Set(mediaFolders.map((folder) => folder.Id));
+            policy.EnableAllFolders = fields.all;
+            policy.EnabledFolders = fields.all ? [] : fields.folders.concat((policy.EnabledFolders || []).filter((id) => !shown.has(id)));
+        }
+    };
+
+    // Parental control: the maximum rating ("None" for no maximum), the unrated types to block and the allowed hours
+    function renderRatings(selected) {
+        const select = view.querySelector('.kidsMaxRating');
+        const none = element('option', null, 'None');
+        none.value = '-1';
+        select.replaceChildren(none, ...ratingGroups.map((group, index) => {
+            const option = element('option', null, group.name);
+            option.value = String(index);
+            return option;
+        }));
+        select.value = String(selected);
+    }
+
+    function renderUnrated(blocked) {
+        const set = new Set(blocked);
+        view.querySelector('.kidsUnrated').replaceChildren(...unratedTypes.map((type) => {
+            const label = element('label');
+            const checkbox = element('input', 'kidsUnratedType');
+            checkbox.type = 'checkbox';
+            checkbox.setAttribute('is', 'emby-checkbox');
+            checkbox.dataset.type = type.id;
+            checkbox.checked = set.has(type.id);
+            label.append(checkbox, element('span', null, type.name));
+            return label;
+        }));
+    }
+
+    function renderSchedules() {
+        const list = view.querySelector('.kidsSchedules');
+        if (schedules.length === 0) {
+            list.replaceChildren(element('div', 'fieldDescription kidsEmpty', 'Any time: no allowed hours are set.'));
+            return;
+        }
+
+        list.replaceChildren(...schedules.map((schedule, index) => {
+            const item = row('listItem-border');
+            const body = element('div', 'listItemBody');
+            body.append(element('div', 'listItemBodyText', scheduleText(schedule)));
+            item.append(body, iconButton('delete', 'Remove ' + scheduleText(schedule), () => {
+                schedules.splice(index, 1);
+                renderSchedules();
+                renderTabDirty();
+            }));
+            return item;
+        }));
+    }
+
+    const scheduleDialog = view.querySelector('.kidsScheduleDialog');
+
+    function hourOptions(select, from, to) {
+        const options = [];
+        for (let hour = from; hour <= to; hour += 0.5) {
+            const option = element('option', null, hourText(hour));
+            option.value = String(hour);
+            options.push(option);
+        }
+
+        select.replaceChildren(...options);
+    }
+
+    function openScheduleDialog() {
+        const day = view.querySelector('.kidsScheduleDay');
+        day.replaceChildren(...['Everyday', 'Weekday', 'Weekend', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            .map((id) => {
+                const option = element('option', null, scheduleDays[id]);
+                option.value = id;
+                return option;
+            }));
+        hourOptions(view.querySelector('.kidsScheduleStart'), 0, 23.5);
+        hourOptions(view.querySelector('.kidsScheduleEnd'), 0.5, 24);
+        view.querySelector('.kidsScheduleStart').value = '8';
+        view.querySelector('.kidsScheduleEnd').value = '20';
+        setLine(view.querySelector('.kidsScheduleError'), null);
+        scheduleDialog.showModal();
+    }
+
+    function addSchedule(event) {
+        event.preventDefault();
+        const start = Number(view.querySelector('.kidsScheduleStart').value);
+        const end = Number(view.querySelector('.kidsScheduleEnd').value);
+        if (end <= start) {
+            setLine(view.querySelector('.kidsScheduleError'), 'The end must be after the start.');
+            return;
+        }
+
+        schedules.push({ DayOfWeek: view.querySelector('.kidsScheduleDay').value, StartHour: start, EndHour: end });
+        scheduleDialog.close();
+        renderSchedules();
+        renderTabDirty();
+    }
+
+    policyTabs.parental = {
+        read: () => ({
+            rating: Number(view.querySelector('.kidsMaxRating').value),
+            unrated: [...view.querySelectorAll('.kidsUnratedType')].filter((box) => box.checked).map((box) => box.dataset.type),
+            schedules: schedules.map((s) => [s.DayOfWeek, s.StartHour, s.EndHour])
+        }),
+        fill: (policy) => {
+            renderRatings(ratingIndex(ratingGroups, policy));
+            renderUnrated(policy.BlockUnratedItems || []);
+            // The server's DayOfWeek is kept as it came (a name; scheduleText reads a number too). Jellyfin assigns
+            // the Id and UserId of each new entry, as with jellyfin-web's dialog.
+            schedules = (policy.AccessSchedules || []).map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
+            renderSchedules();
+        },
+        apply: (policy) => {
+            const fields = policyTabs.parental.read();
+            const group = ratingGroups[fields.rating];
+            policy.MaxParentalRating = group ? group.score : null;
+            policy.MaxParentalSubRating = group ? group.subScore : null;
+            // Types this page doesn't list (a later Jellyfin's) stay as they were
+            const known = new Set(unratedTypes.map((type) => type.id));
+            policy.BlockUnratedItems = (policy.BlockUnratedItems || []).filter((type) => !known.has(type)).concat(fields.unrated);
+            policy.AccessSchedules = schedules.map((s) => ({ DayOfWeek: s.DayOfWeek, StartHour: s.StartHour, EndHour: s.EndHour }));
+        }
+    };
 
     function showMessage(text) {
         const message = view.querySelector('.kidsMessage');
@@ -490,11 +815,12 @@ export default function (view, params) {
     }
 
     function isDirty() {
-        return snapshot !== null && !form.hidden && JSON.stringify(currentBody()) !== snapshot;
+        return snapshot !== null && !editor.hidden && JSON.stringify(currentBody()) !== snapshot;
     }
 
     function renderDirty() {
         view.querySelector('.kidsUnsaved').hidden = !isDirty();
+        renderTabDirty();
     }
 
     function takeSnapshot() {
@@ -646,7 +972,6 @@ export default function (view, params) {
         view.querySelector('.kidsLiveTvAccessOff').hidden = policy.EnableLiveTvAccess !== false;
         const blocked = policy.BlockUnratedItems || [];
         view.querySelector('.kidsLiveTvUnrated').hidden = !blocked.includes('LiveTvChannel') && !blocked.includes('LiveTvProgram');
-        view.querySelector('.kidsUserProfileLink').href = userTab(userId, 'profile');
     }
 
     // Health lines from the stored channel list, the administrator one first
@@ -657,25 +982,16 @@ export default function (view, params) {
         list.replaceChildren(...issues.map((issue) => {
             const line = element('p', 'kidsWarning');
             line.append(icon('warning'), issue.text);
-            if (issue.href) {
-                const fix = element('a', 'button-link', 'Fix');
-                fix.setAttribute('is', 'emby-linkbutton');
-                fix.href = issue.href;
+            if (issue.tab) {
+                const fix = element('button', 'button-link', 'Fix');
+                fix.type = 'button';
                 fix.setAttribute('aria-label', 'Fix: ' + issue.text);
+                fix.addEventListener('click', () => selectTab(issue.tab));
                 line.append(fix);
             }
 
             return line;
         }));
-    }
-
-    function renderSchedule() {
-        const schedules = (user && user.Policy && user.Policy.AccessSchedules) || [];
-        const list = view.querySelector('.kidsSchedule');
-        list.replaceChildren(...(schedules.length === 0
-            ? [element('li', null, 'Any time: no allowed hours are set in Jellyfin.')]
-            : schedules.map((schedule) => element('li', null, scheduleText(schedule)))));
-        view.querySelector('.kidsScheduleLink').href = userTab(userId, 'parentalcontrol');
     }
 
     function renderResults(candidates, term) {
@@ -735,7 +1051,8 @@ export default function (view, params) {
         renderSections();
         renderPicks();
         renderChannels();
-        renderHealth(profile.LiveTvChannelIds || []);
+        pickedIds = profile.LiveTvChannelIds || [];
+        renderHealth(pickedIds);
         takeSnapshot();
 
         if (picks.length === 0) {
@@ -924,23 +1241,42 @@ export default function (view, params) {
     function load() {
         Dashboard.showLoadingMsg();
         showMessage(null);
-        form.hidden = true;
+        editor.hidden = true;
         snapshot = null;
         // The channel list and the configuration are not needed to edit the rest: if they fail, their lines say less
         // Asked for this kid, so each channel also says whether Jellyfin hides it from them
         const liveTvChannels = request('GET', 'Kids/Admin/LiveTvChannels?userId=' + encodeURIComponent(userId)).catch(() => null);
         const household = pluginConfiguration().catch(() => null);
-        return Promise.all([request('GET', 'Kids/Users/' + userId + '/Profile'), ApiClient.getUser(userId), liveTvChannels, household])
-            .then(([profile, loadedUser, serverList, loadedConfig]) => {
+        // Required, like the user: without them the Access tab could not show the kid's libraries
+        const libraries = ApiClient.getJSON(ApiClient.getUrl('Library/MediaFolders', { IsHidden: false }))
+            .then((result) => result.Items || []);
+        return Promise.all([
+            request('GET', 'Kids/Users/' + userId + '/Profile'),
+            ApiClient.getUser(userId),
+            liveTvChannels,
+            household,
+            libraries,
+            ApiClient.getParentalRatings().then(groupRatings)
+        ])
+            .then(([profile, loadedUser, serverList, loadedConfig, loadedFolders, loadedRatings]) => {
                 user = loadedUser;
                 config = loadedConfig;
+                mediaFolders = loadedFolders;
+                ratingGroups = loadedRatings;
                 view.querySelector('.kidsUserTitle').textContent = 'Kid settings: ' + user.Name;
+                view.querySelectorAll('.kidsUserName').forEach((node) => {
+                    node.textContent = user.Name;
+                });
+                view.querySelectorAll('.kidsJellyfinUserLink').forEach((link) => {
+                    link.href = '#/dashboard/users/' + userId + '/profile';
+                });
                 serverChannels = serverList;
                 renderLiveTvWarnings();
-                renderSchedule();
+                fillPolicyTabs();
                 renderBreak();
                 return applyProfile(profile).then(() => {
-                    form.hidden = false;
+                    selectTab(params.tab);
+                    editor.hidden = false;
                     renderDirty();
                     loadUsage();
                     search();
@@ -973,7 +1309,8 @@ export default function (view, params) {
             .then((profile) => {
                 revision = profile.Revision;
                 takeSnapshot();
-                renderHealth(profile.LiveTvChannelIds || []);
+                pickedIds = profile.LiveTvChannelIds || [];
+                renderHealth(pickedIds);
                 toast('Saved');
                 // The status follows the new allowance and sitting limit
                 return loadUsage();
@@ -995,7 +1332,7 @@ export default function (view, params) {
                 }
 
                 if (status === 404) {
-                    form.hidden = true;
+                    editor.hidden = true;
                     showMessage('This user is no longer a kid.');
                     return undefined;
                 }
@@ -1009,7 +1346,7 @@ export default function (view, params) {
 
     // Reloading or closing the tab with unsaved changes asks first; Jellyfin's own navigation cannot be held back
     const onBeforeUnload = (event) => {
-        if (isDirty()) {
+        if (isDirty() || Object.keys(policyTabs).some(policyTabDirty)) {
             event.preventDefault();
             event.returnValue = '';
         }
@@ -1035,12 +1372,38 @@ export default function (view, params) {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(search, 300);
     });
+    view.querySelectorAll('.kidsPolicyForm').forEach((policyForm) => {
+        policyForm.addEventListener('submit', (event) => savePolicyTab(policyForm.dataset.tab, event));
+        policyForm.addEventListener('input', renderTabDirty);
+        policyForm.addEventListener('change', renderTabDirty);
+    });
+    view.querySelectorAll('.kidsTab').forEach((button) => {
+        button.addEventListener('click', () => selectTab(button.dataset.tab));
+        // Arrow keys move along the tabs, as in a tablist
+        button.addEventListener('keydown', (event) => {
+            const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+            if (offset) {
+                event.preventDefault();
+                const next = tabNames[(tabNames.indexOf(button.dataset.tab) + offset + tabNames.length) % tabNames.length];
+                selectTab(next);
+                view.querySelector('#kidsTab-' + next).focus();
+            }
+        });
+    });
+    view.querySelector('.kidsGoProfile').addEventListener('click', (event) => {
+        event.preventDefault();
+        selectTab('profile');
+    });
     view.querySelector('.kidsReload').addEventListener('click', () => {
         if (conflictProfile) {
             applyProfile(conflictProfile);
             conflictProfile = null;
         }
     });
+    view.querySelector('.kidsAllFolders').addEventListener('change', renderFolderBlock);
+    view.querySelector('.kidsScheduleAdd').addEventListener('click', openScheduleDialog);
+    view.querySelector('.kidsScheduleForm').addEventListener('submit', addSchedule);
+    view.querySelector('.kidsScheduleCancel').addEventListener('click', () => scheduleDialog.close());
     view.addEventListener('viewshow', () => {
         window.addEventListener('beforeunload', onBeforeUnload);
         load();
