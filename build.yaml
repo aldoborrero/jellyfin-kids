@@ -1,7 +1,7 @@
 ---
 name: "Kids"
 guid: "d62ee188-270c-49d8-b7b9-5e524fec2335"
-version: "0.0.11.0"
+version: "0.11.0.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Parent-controlled kids profiles"
@@ -14,11 +14,6 @@ owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"
 changelog: >
-  Configure a kid from one place. The kid editor (Dashboard → Kids → a kid) now has four tabs: Kids, with the
-  plugin's settings as before, and Profile, Access and Parental control, which repeat the parts of Jellyfin's own user
-  pages that matter for a kid: Live TV access and downloads (and administrator, shown only so it can be turned off),
-  which libraries the kid can see, the maximum rating, blocking unrated items and the allowed hours. Each tab saves on
-  its own the way Jellyfin does: it reads the user again and changes only its own fields, so nothing else in the
-  policy is lost, and a change Jellyfin refuses shows its reason in the tab. A tab with unsaved changes is marked. The
-  Fix links of the protection check open the right tab, and each tab links to the kid in Jellyfin's Users pages. No
-  API or database change.
+  Versions now number 0.11.x: this is 0.0.11.0 renumbered, with no change to the plugin. Jellyfin offers it as an
+  update from 0.0.11.0 and earlier. The README is rewritten in plainer words, and its roadmap marks the kid editor's
+  Jellyfin tabs as done.
