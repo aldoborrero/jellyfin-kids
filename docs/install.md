@@ -102,8 +102,8 @@ For each release:
 2. Commit, then tag and push the tag:
 
    ```sh
-   git tag -a v0.0.3.0 -m "Kids 0.0.3.0"
-   git push origin v0.0.3.0
+   git tag -a v0.11.0.0 -m "Kids 0.11.0.0"
+   git push origin v0.11.0.0
    ```
 
    The workflow refuses a tag that doesn't match both files.
@@ -111,7 +111,7 @@ For each release:
 To build and inspect a release locally first, without GitHub:
 
 ```sh
-nix develop -c nix shell nixpkgs#yq-go -c scripts/release/package.sh --tag v0.0.3.0
+nix develop -c nix shell nixpkgs#yq-go -c scripts/release/package.sh --tag v0.11.0.0
 ```
 
 It writes `artifacts/kids_<version>.zip`, its `.md5sum`, and `artifacts/manifest.json`. Pass
