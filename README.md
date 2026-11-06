@@ -1,9 +1,4 @@
-<divignores the stop keeps playing what it has already downloaded.
-
-We want kids mode in more clients. The API is open to any Jellyfin client and documented under [API](#api); if you
-work on a client and want to add it, open an issue and we will help.
-
-| | Pekealign="center">
+<div align="center">
 
 <img src="docs/assets/banner.svg" alt="Jellyfin Kids: kid profiles, a parent lock and shared screen time, enforced by your Jellyfin server" width="100%" />
 
