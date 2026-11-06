@@ -72,24 +72,19 @@ and for installing a release by hand.
 
 ## Screenshots
 
-The Kids dashboard pages in Jellyfin 12.2 (development server, with sample kids).
+The Kids dashboard pages in Jellyfin 12.2, on a development server with three sample kids. Select a picture to see it
+full size.
 
 <table>
   <tr>
-    <td width="50%"><a href="docs/assets/screenshots/kids-page-dark.png"><img src="docs/assets/screenshots/kids-page-dark.png" alt="Kids page in the dark theme: users with their kid status, today's screen time and health warnings with Fix links, the enforcement banner, the parent lock and the screen time settings"></a></td>
-    <td width="50%"><a href="docs/assets/screenshots/kid-editor-dark.png"><img src="docs/assets/screenshots/kid-editor-dark.png" alt="Kid editor in the dark theme: health warnings with Fix links above the Kids, Profile, Access and Parental control tabs; the Kids tab with screen time and Reset today, daily allowance, sitting limit and bonus, browsing, home sections, picks and live TV channels"></a></td>
+    <td width="40%" valign="top"><a href="docs/assets/screenshots/kids-page-dark.png"><img src="docs/assets/screenshots/kids-page-dark.png" alt="Kids page: alice, a protected kid with 60 minutes a day and one live TV channel; bob and carol with the gaps Jellyfin still leaves open and their Fix links; the enforcement banner, the parent lock, the screen time settings and the data folder"></a></td>
+    <td width="40%" valign="top"><a href="docs/assets/screenshots/kid-editor-dark.png"><img src="docs/assets/screenshots/kid-editor-dark.png" alt="Kid editor for bob: the gaps with Fix links above the Kids, Profile, Access and Parental control tabs; the Kids tab with screen time and Reset today, daily allowance, sitting limit and bonus, avatar, browsing, home sections, picks and live TV channels"></a></td>
+    <td width="20%" valign="top"><a href="docs/assets/screenshots/kids-page-mobile.png"><img src="docs/assets/screenshots/kids-page-mobile.png" alt="Kids page on a narrow phone screen"></a></td>
   </tr>
   <tr>
-    <td align="center"><b>Kids page</b>: who is a kid, today's screen time, what still leaves each kid unprotected, with Fix links, the parent lock and household settings.</td>
-    <td align="center"><b>Kid editor</b>: screen time, sitting limit, bonus and Reset today, home sections, picks and live TV channels, with tabs for the kid's Jellyfin profile, libraries and parental control.</td>
-  </tr>
-  <tr>
-    <td width="50%"><a href="docs/assets/screenshots/kids-page-light.png"><img src="docs/assets/screenshots/kids-page-light.png" alt="Kids page in the light theme"></a></td>
-    <td width="50%" align="center"><a href="docs/assets/screenshots/kids-page-mobile.png"><img src="docs/assets/screenshots/kids-page-mobile.png" alt="Kids page on a narrow phone screen" width="200"></a></td>
-  </tr>
-  <tr>
-    <td align="center">Light theme</td>
-    <td align="center">On a phone</td>
+    <td align="center"><b>Kids page</b>: who is a kid, today's screen time, what still leaves each kid unprotected, the parent lock and household settings.</td>
+    <td align="center"><b>Kid editor</b>: screen time, avatar, home sections, picks and live TV channels, with tabs for the kid's Jellyfin profile, libraries and parental control.</td>
+    <td align="center">On a phone.</td>
   </tr>
 </table>
 
@@ -161,12 +156,37 @@ removes everything it enforces.
 
 ## Clients
 
-Clients detect the plugin with the anonymous `GET /Kids/Info`, which lists the features the server
-supports. Clients without kids mode keep working as usual.
+Every Jellyfin client gets the server's rules. A kids app that speaks the plugin's API also gets kids mode: a profile
+picker, a kids home and the parent code on the TV. Clients find the plugin with the anonymous `GET /Kids/Info`, which
+lists the features the server supports, and clients without kids mode keep working as usual.
 
-- **Peke for Jellyfin** (Android TV): the kids client the plugin is built with: who's watching with each kid's
-  avatar, kids home, the parent gate, the daily allowance and a per-sitting timer. In development.
-- Any other client can use the same API.
+<a href="https://github.com/aldoborrero/peke"><img src="docs/assets/clients/peke.svg" alt="Peke for Jellyfin: the kids app for Android TV, made with this plugin" width="100%"></a>
+
+[Peke for Jellyfin](https://github.com/aldoborrero/peke) is an Android TV app made only for kids, built together with
+this plugin. Each kid picks their avatar and gets their own home with their picks, shows and live channels. Peke shows
+the time left, warns before it runs out and stops when it does, even with enforcement off. Grown-ups get in with the
+household parent code. It needs Jellyfin Kids 0.0.7.0 or later and is in development.
+
+<a href="https://github.com/jellyfin/jellyfin-web"><img src="docs/assets/clients/jellyfin-web.svg" alt="Jellyfin Web: Jellyfin's own app in the browser, and the dashboard" width="100%"></a>
+
+[Jellyfin Web](https://github.com/jellyfin/jellyfin-web) is where you set everything up, under Dashboard → Kids. A kid
+who signs in there gets the same limits as anywhere else: their screen time counts, they see only their live TV
+channels, and with enforcement on, playback stops when their time is up. It is the client the plugin is tested with.
+
+<a href="https://jellyfin.org/downloads/"><img src="docs/assets/clients/jellyfin-apps.svg" alt="Jellyfin apps: Android, Android TV, iOS, Kodi and other clients" width="100%"></a>
+
+[Other Jellyfin apps](https://jellyfin.org/downloads/) need nothing installed. The rules live on the server, so a kid's
+screen time, live TV channels and, with enforcement on, the stop at time's up apply in them too. They are not tested
+one by one, and an app that ignores the stop keeps playing what it has already downloaded.
+
+| | Peke | Jellyfin Web | Other Jellyfin apps |
+|---|:---:|:---:|:---:|
+| Kid picker, kids home and picks | ✓ | | |
+| Parent code on the TV | ✓ | | |
+| Jellyfin's libraries, ratings and allowed hours | ✓ | ✓ | ✓ |
+| Screen time counted on the server | ✓ | ✓ | ✓ |
+| Only the kid's live TV channels | ✓ | ✓ | ✓ |
+| Warning and stop when time is up | ✓ | with enforcement | with enforcement |
 
 ## API
 
@@ -241,7 +261,9 @@ the project's [constitution](.specify/memory/constitution.md). Upstream sources 
 
 The code is MIT. See [LICENSE](LICENSE).
 
-The banner in [docs/assets/banner.svg](docs/assets/banner.svg) includes the Jellyfin logo from
+The banner in [docs/assets/banner.svg](docs/assets/banner.svg) and the Jellyfin client cards in
+[docs/assets/clients/](docs/assets/clients/) include the Jellyfin logo from
 [jellyfin-ux](https://github.com/jellyfin/jellyfin-ux), © the Jellyfin contributors, under
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The banner is shared under the same
-license. Jellyfin Kids is a community plugin, not an official Jellyfin project.
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and are shared under the same license. The Peke
+card uses Peke's app icon from [Peke for Jellyfin](https://github.com/aldoborrero/peke). Jellyfin Kids is a
+community plugin, not an official Jellyfin project.

@@ -13,7 +13,8 @@ category: "Administration"
 owner: "aldoborrero"
 artifacts:
 - "Jellyfin.Plugin.Kids.dll"
-changelog: >
-  Versions now number 0.11.x: this is 0.0.11.0 renumbered, with no change to the plugin. Jellyfin offers it as an
-  update from 0.0.11.0 and earlier. The README is rewritten in plainer words, and its roadmap marks the kid editor's
-  Jellyfin tabs as done.
+changelog: |
+  Versions now number 0.11.x. This is 0.0.11.0 renumbered, with no change to the plugin.
+
+  - Jellyfin offers 0.11.0.0 as an update from 0.0.11.0 and earlier.
+  - The README is rewritten in plainer words, and its roadmap marks the kid editor's Jellyfin tabs as done.
