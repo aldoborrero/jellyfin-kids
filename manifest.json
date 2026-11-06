@@ -8,6 +8,14 @@
     "category": "Administration",
     "versions": [
       {
+        "version": "0.11.0.0",
+        "changelog": "Versions now number 0.11.x: this is 0.0.11.0 renumbered, with no change to the plugin. Jellyfin offers it as an update from 0.0.11.0 and earlier. The README is rewritten in plainer words, and its roadmap marks the kid editor's Jellyfin tabs as done.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/aldoborrero/jellyfin-kids/releases/download/v0.11.0.0/kids_0.11.0.0.zip",
+        "checksum": "704762d8b1909a3bed7cc001c0b890af",
+        "timestamp": "2026-11-06T11:03:08Z"
+      },
+      {
         "version": "0.0.11.0",
         "changelog": "Configure a kid from one place. The kid editor (Dashboard → Kids → a kid) now has four tabs: Kids, with the plugin's settings as before, and Profile, Access and Parental control, which repeat the parts of Jellyfin's own user pages that matter for a kid: Live TV access and downloads (and administrator, shown only so it can be turned off), which libraries the kid can see, the maximum rating, blocking unrated items and the allowed hours. Each tab saves on its own the way Jellyfin does: it reads the user again and changes only its own fields, so nothing else in the policy is lost, and a change Jellyfin refuses shows its reason in the tab. A tab with unsaved changes is marked. The Fix links of the protection check open the right tab, and each tab links to the kid in Jellyfin's Users pages. No API or database change.",
         "targetAbi": "12.0.0.0",
