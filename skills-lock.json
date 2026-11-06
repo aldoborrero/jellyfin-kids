@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "crafting-effective-readmes": {
+      "source": "joshuadavidthomas/agent-skills",
+      "sourceType": "github",
+      "skillPath": "crafting-effective-readmes/SKILL.md",
+      "computedHash": "a529b062fa23e3f93745ee4842ccfd97c887432f1a38350dca767256fc6453c6"
+    },
+    "humanizer": {
+      "source": "blader/humanizer",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "1e67c3a4a675bd0c961b1fd8ebb718174f9a61a547d9bedad2ade5eb99cce831"
+    }
+  }
+}
