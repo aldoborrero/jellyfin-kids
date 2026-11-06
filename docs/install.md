@@ -97,7 +97,9 @@ For each release:
 
 1. Bump the version, in four parts (`X.Y.Z.W`), to the same value in `build.yaml` (`version`) and in
    `Directory.Build.props` (`Version`, `AssemblyVersion`, `FileVersion`). Write the release notes in
-   `changelog` in `build.yaml`; they become the release notes and the catalog changelog. Raise
+   Markdown in `changelog` in `build.yaml`, as a literal block (`changelog: |`) so lines and lists are kept;
+   they become the release notes and the catalog changelog, which Jellyfin renders as Markdown. Use `###`
+   headings, bullets and backticks only: Jellyfin's activity log shows the same text unrendered. Raise
    `targetAbi` only when the plugin needs a newer Jellyfin.
 2. Commit, then tag and push the tag:
 
