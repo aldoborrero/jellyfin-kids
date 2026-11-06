@@ -16,7 +16,7 @@ work on a client and want to add it, open an issue and we will help.
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![MIT license](https://img.shields.io/badge/license-MIT-f4c430?style=flat-square)](LICENSE)
 
-[Install](#install) · [What it does](#what-it-does) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Clients](#clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
+[Install](#install) · [What it does](#what-it-does) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Supported clients](#supported-clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
 
 <code>https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json</code>
 
@@ -153,34 +153,17 @@ Plugin data lives in a small SQLite database in `data/kids/` in Jellyfin's data 
 database (see [Your data](docs/install.md#your-data)). Admins and API keys are never blocked, and disabling the plugin
 removes everything it enforces.
 
-## Clients
+## Supported clients
 
-Every Jellyfin client gets the server's rules. A kids app that speaks the plugin's API also gets kids mode: a profile
-picker, a kids home and the parent code on the TV. Clients find the plugin with the anonymous `GET /Kids/Info`, which
-lists the features the server supports, and clients without kids mode keep working as usual.
+These clients support Jellyfin Kids natively.
 
 <a href="https://github.com/aldoborrero/peke"><img src="docs/assets/clients/peke.svg" alt="Peke for Jellyfin: the kids app for Android TV, made with this plugin" width="100%"></a>
 
-[Peke for Jellyfin](https://github.com/aldoborrero/peke) is an Android TV app made only for kids, built together with
-this plugin. Each kid picks their avatar and gets their own home with their picks, shows and live channels. Peke shows
-the time left, warns before it runs out and stops when it does, even with enforcement off. Grown-ups get in with the
-household parent code. It needs Jellyfin Kids 0.0.7.0 or later and is in development.
-
-Other Jellyfin apps have no kids mode yet, but the rules live on the server, so a kid's screen time, live TV channels
-and, with enforcement on, the stop at time's up apply in them too. They are not tested one by one, and an app that
-ignores the stop keeps playing what it has already downloaded.
+[Peke for Jellyfin](https://github.com/aldoborrero/peke): an Android TV app made only for kids. It needs Jellyfin Kids
+0.0.7.0 or later and is in development.
 
 We want kids mode in more clients. The API is open to any Jellyfin client and documented under [API](#api); if you
 work on a client and want to add it, open an issue and we will help.
-
-| | Peke | Other Jellyfin apps |
-|---|:---:|:---:|
-| Kid picker, kids home and picks | ✓ | |
-| Parent code on the TV | ✓ | |
-| Jellyfin's libraries, ratings and allowed hours | ✓ | ✓ |
-| Screen time counted on the server | ✓ | ✓ |
-| Only the kid's live TV channels | ✓ | ✓ |
-| Warning and stop when time is up | ✓ | with enforcement |
 
 ## API
 
