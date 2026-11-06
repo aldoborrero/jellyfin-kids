@@ -57,10 +57,6 @@ and for installing a release by hand.
 > moves the database there from `plugins/Jellyfin.Plugin.Kids/` on its own. See
 > [Your data](docs/install.md#your-data).
 
-> [!WARNING]
-> **Updating to 0.0.6.0 cuts every kid's live TV** until you pick their channels under **Live TV channels** in
-> Dashboard → Kids → the kid. This happens even with enforcement off; see [Live TV](#live-tv).
-
 ## What it does
 
 | | |
@@ -173,6 +169,9 @@ household parent code. It needs Jellyfin Kids 0.0.7.0 or later and is in develop
 Other Jellyfin apps have no kids mode yet, but the rules live on the server, so a kid's screen time, live TV channels
 and, with enforcement on, the stop at time's up apply in them too. They are not tested one by one, and an app that
 ignores the stop keeps playing what it has already downloaded.
+
+We want kids mode in more clients. The API is open to any Jellyfin client and documented under [API](#api); if you
+work on a client and want to add it, open an issue and we will help.
 
 | | Peke | Other Jellyfin apps |
 |---|:---:|:---:|
