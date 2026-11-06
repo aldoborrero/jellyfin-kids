@@ -4,7 +4,7 @@ let
 in
 perSystem.devshell.mkShell {
   packages = with pkgs; [
-    nixfmt-tree # same formatter `nix fmt` uses, for the nix/ files
+    perSystem.self.formatter # `treefmt`, the same formatter `nix fmt` runs
 
     # Plugin build: Jellyfin 12.x plugins target net10.0
     dotnet
