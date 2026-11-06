@@ -1,9 +1,4 @@
-<divignores the stop keeps playing what it has already downloaded.
-
-We want kids mode in more clients. The API is open to any Jellyfin client and documented under [API](#api); if you
-work on a client and want to add it, open an issue and we will help.
-
-| | Pekealign="center">
+<div align="center">
 
 <img src="docs/assets/banner.svg" alt="Jellyfin Kids: kid profiles, a parent lock and shared screen time, enforced by your Jellyfin server" width="100%" />
 
@@ -64,8 +59,8 @@ and for installing a release by hand.
 | **Kid profiles** | Mark any Jellyfin user as a kid, with their own avatar, home sections, picks, search and autoplay settings. Warns when a kid account is an administrator, since admins bypass every check. |
 | **Household parent code** | One code for the whole house, digits or remote buttons. Checked by the server, rate limited per device and per kid, and stored only as a PBKDF2 verifier. A right code gives a short-lived grant for changes. |
 | **Daily allowance** | Minutes per day per kid, shared across devices. Counted on the server from real playback (paused time doesn't count, and a kid watching in a parent's session isn't charged). Parents can add bonus time for today and undo a wrong one within 10 minutes, end a break after the sitting limit early, or reset today back to zero (all logged). |
-| **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. This also applies in jellyfin-web and every other client. Off until you turn it on; see [Enforcement](#enforcement). |
-| **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](#live-tv). |
+| **Enforcement on every client** (opt-in) | When a kid runs out of time, reaches their sitting limit or their allowed hours end, the server warns them, shows a message, stops the player, ends transcodes and cuts streams, and refuses new playback until a bonus, a break or the next day. This also applies in jellyfin-web and every other client. Off until you turn it on; see [Enforcement](docs/enforcement.md). |
+| **Live TV channels per kid** | Pick which live TV channels each kid may watch (for example the kids channels of an ErsatzTV tuner). On every client, a kid can only play, list and see the guide of their own channels, and never recordings or timers. Live TV counts as screen time. Always on, so kids have no live TV until you pick their channels; see [Live TV](docs/live-tv.md). |
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
 | **Dashboard pages** | You manage all of this from Jellyfin's own dashboard. The list of kids shows what still leaves each one unprotected in Jellyfin: an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, picked channels that Jellyfin's parental control hides, or downloads. You fix each of these on the kid's own page, which edits the libraries, maximum rating, unrated items, allowed hours, live TV access and downloads next to the kids settings. A banner says when limits only apply in the kids app. |
@@ -86,55 +81,6 @@ full size.
     <td align="center"><b>Kid editor</b>: screen time, avatar, home sections, picks and live TV channels, with tabs for the kid's Jellyfin profile, libraries and parental control.</td>
   </tr>
 </table>
-
-## Enforcement
-
-Enforcement is off after installing or updating. Turn it on per household with **Enforce on every app** under
-Screen time on the Kids dashboard page, which also sets the break between sittings and shows whether every playback
-route could be guarded on your Jellyfin version. Or through the plugin configuration API:
-
-```sh
-curl -s -H "Authorization: MediaBrowser Token=\"$ADMIN_TOKEN\"" "$JELLYFIN/Plugins/d62ee188270c49d8b7b95e524fec2335/Configuration" \
-  | jq '.EnforcementEnabled = true' \
-  | curl -s -X POST -H "Authorization: MediaBrowser Token=\"$ADMIN_TOKEN\"" -H 'Content-Type: application/json' \
-      -d @- "$JELLYFIN/Plugins/d62ee188270c49d8b7b95e524fec2335/Configuration"
-```
-
-`SittingBreakMinutes` (default 15) is how long a kid must have nothing playing for a new sitting to start.
-
-With enforcement on, for kids only:
-
-- 5 and 1 minutes before the allowance, the sitting or the allowed hours end, each playing app shows a notice.
-- When one ends, the app shows a message, and about 5 seconds later the server stops it, ends its transcodes and
-  live streams, cuts the streams it is sending and ends the playback on the server. If the app keeps playing, the
-  server stops it again, at most every 10 seconds.
-- New playback is refused: jellyfin-web shows "Playback of this media is not allowed", other routes answer 403 with
-  `X-Application-Error-Code: PlaybackNotAllowed`. Browsing, search and the rest of Jellyfin keep working.
-- A bonus, Reset today, the end of the break or the next day lifts it at once.
-
-Limits: an app that ignores the stop keeps playing what it has already downloaded (about 35 seconds for a browser in
-our tests). A stream address with no token and no device id can't be tied to a kid, and DLNA renderers and offline
-downloads are out of reach. `GET /Kids/Info` reports whether every playback route could be guarded on your Jellyfin
-version.
-
-## Live TV
-
-Jellyfin's own live TV permission is all or nothing, so the plugin adds a per-kid channel list: open the kid in
-Dashboard → Kids and tick their channels under **Live TV channels**.
-
-After updating to 0.0.6.0, kids have no live TV until you pick their channels. The channel rules are always on,
-with or without enforcement, because they are a content rule, like ratings. For kids only:
-
-- Playing a channel that is not in their list is refused on every client (jellyfin-web shows "Playback of this media
-  is not allowed"; other routes answer 403 with `X-Kids-Reason: liveTvChannel`).
-- Jellyfin's own channel list and guide show only their channels; recordings and timers are refused.
-- The kid's Jellyfin user still needs **Allow Live TV access**: turn it on in the kid's Profile tab (the editor warns
-  when it is off). Jellyfin's ratings and "block unrated" settings still apply to channels and programs: the
-  dashboard names each picked channel they hide from a kid, and the editor tab that fixes it.
-- Live TV counts toward the daily allowance and the sitting, and enforcement stops it like any other playback.
-
-Kids clients read the kid's channels and guide from `GET /Kids/Users/{id}/LiveTv/Channels` and `/LiveTv/Programs`.
-Limits: generic `/Items` lookups of a channel id and images are not filtered.
 
 ## How it works
 
