@@ -41,6 +41,12 @@ let
       shfmt.indent_size = 2;
       shfmt.simplify = false;
 
+      shellcheck.enable = true;
+      shellcheck.includes = [
+        "*.sh"
+        ".envrc"
+      ];
+
       # YAML only: on the dashboard JS and HTML it rewrites most lines
       prettier.enable = true;
       prettier.includes = [

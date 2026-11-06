@@ -1,0 +1,7 @@
+# Idioms the dev scripts use on purpose
+# jq filters and curl --write-out formats are single-quoted so the shell leaves them alone
+disable=SC2016
+# `check && echo PASS || echo FAIL`: the echo never fails, so the || branch only runs when the check does
+disable=SC2015
+# `ls -t ... | head -1` picks the newest log or backup; the names are the plugin's and Jellyfin's own
+disable=SC2012

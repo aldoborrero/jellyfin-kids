@@ -8,7 +8,7 @@ dev=${JELLYFIN_KIDS_DEV:-$root/.dev}
 url=${JELLYFIN_URL:-http://127.0.0.1:${JELLYFIN_KIDS_PORT:-8096}}
 admin_user=${DEV_ADMIN_USER:-admin}
 admin_password=${DEV_ADMIN_PASSWORD:-admin}
-kids=(${DEV_KIDS:-alice bob})
+read -ra kids <<<"${DEV_KIDS:-alice bob}"
 
 client='MediaBrowser Client="jellyfin-kids-dev", Device="dev", DeviceId="jellyfin-kids-dev", Version="0.0.1"'
 api() {

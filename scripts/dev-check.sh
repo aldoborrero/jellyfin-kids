@@ -55,10 +55,10 @@ req_dev() {
   local token=$1 device=$2 method=$3 path=$4 data=${5-} grant=${6-}
   local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\"" out
   [[ $token != - ]] && auth+=", Token=\"$token\""
-  local headers=(-H "Authorization: $auth" -H 'Content-Type: application/json')
-  [[ -n $grant ]] && headers+=(-H "X-Kids-Grant: $grant")
+  local curl_headers=(-H "Authorization: $auth" -H 'Content-Type: application/json')
+  [[ -n $grant ]] && curl_headers+=(-H "X-Kids-Grant: $grant")
   out=$(mktemp)
-  status=$(curl --silent --output "$out" --write-out '%{http_code}' -X "$method" "$url$path" "${headers[@]}" \
+  status=$(curl --silent --output "$out" --write-out '%{http_code}' -X "$method" "$url$path" "${curl_headers[@]}" \
     ${data:+--data "$data"}) || status=000
   body=$(cat "$out")
   rm -f "$out"
@@ -602,14 +602,14 @@ trap 'restore_alice; configure ".EnforcementEnabled = false | .SittingBreakMinut
 
 # req_h <token|-> <deviceId> <method> <path> [range]: like req_dev, also sets $headers (lower-case names)
 req_h() {
-  local token=$1 device=$2 method=$3 path=$4 range=${5-} out hdr
+  local token=$1 device=$2 method=$3 path=$4 range=${5-} out hdr post=()
   local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\""
   [[ $token != - ]] && auth+=", Token=\"$token\""
+  [[ $method == POST ]] && post=(--data '{}')
   out=$(mktemp)
   hdr=$(mktemp)
   status=$(curl --silent --output "$out" --dump-header "$hdr" --write-out '%{http_code}' -X "$method" "$url$path" \
-    -H "Authorization: $auth" -H 'Content-Type: application/json' ${range:+-H "Range: bytes=$range"} \
-    $([[ $method == POST ]] && echo --data '{}')) || status=000
+    -H "Authorization: $auth" -H 'Content-Type: application/json' ${range:+-H "Range: bytes=$range"} "${post[@]}") || status=000
   body=$(head -c 200000 "$out" | tr -d '\000')
   headers=$(tr -d '\r' <"$hdr" | tr '[:upper:]' '[:lower:]')
   rm -f "$out" "$hdr"
@@ -653,7 +653,7 @@ guarded_routes() {
   )
   local route
   for route in "${routes[@]}"; do
-    req_h "$token" "$device" ${route%% *} "${route#* }" 0-1023
+    req_h "$token" "$device" "${route%% *}" "${route#* }" 0-1023
     if [[ $expect == refused ]]; then
       refused "$name ${route%%\?*}" "$reason"
     elif [[ ${route%% *} == POST ]]; then
@@ -1417,7 +1417,13 @@ fact "gd README.txt says not to delete the folder and names it" \
 fact "gd README.txt names the folder" grep -qF "Folder: $kids_folder" "$kids_folder/README.txt"
 
 # ge. When this dev state was moved from the old folder, the move was logged step by step
-migrated=$(ls "$old_folder"/kids.db.migrated-* 2>/dev/null | grep -v -- '-wal$\|-shm$' | head -1 || true)
+migrated=
+for file in "$old_folder"/kids.db.migrated-*; do
+  if [[ -e $file && $file != *-wal && $file != *-shm ]]; then
+    migrated=$file
+    break
+  fi
+done
 if [[ -n $migrated ]]; then
   move_log=$(grep -l "Kids data found at the old location" "$dev"/log/log_*.log 2>/dev/null | head -1 || true)
   fact "ge the move was logged" test -n "$move_log"
