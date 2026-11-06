@@ -33,3 +33,27 @@ jobs:
       # The release packaging, minus the release: catches build.yaml and Directory.Build.props drifting apart
       - name: Package
         run: scripts/release/package.sh
+
+  # The flake: formatting (treefmt, see nix/formatter.nix) and that the devshell builds
+  flake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The official installer from nixos.org, pinned to a version and checked against its published hash
+      - name: Install Nix
+        env:
+          NIX_VERSION: 2.35.4
+          NIX_INSTALL_SHA256: 118c3dfa04bdc946b3f577365b9a295607142c9b920e2c07b184e266d62b1ee1
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsSL "https://releases.nixos.org/nix/nix-$NIX_VERSION/install" -o "$RUNNER_TEMP/install-nix"
+          echo "$NIX_INSTALL_SHA256  $RUNNER_TEMP/install-nix" | sha256sum --check
+          printf '%s\n' 'experimental-features = nix-command flakes' "access-tokens = github.com=$GITHUB_TOKEN" >"$RUNNER_TEMP/nix.conf"
+          sh "$RUNNER_TEMP/install-nix" --daemon --yes --no-channel-add --nix-extra-conf-file "$RUNNER_TEMP/nix.conf"
+          echo /nix/var/nix/profiles/default/bin >>"$GITHUB_PATH"
+
+      - name: Flake check
+        run: nix flake check -L
