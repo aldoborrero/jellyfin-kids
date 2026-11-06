@@ -16,7 +16,7 @@ work on a client and want to add it, open an issue and we will help.
 [![.NET 10](https://img.shields.io/badge/.NET-10-512bd4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![MIT license](https://img.shields.io/badge/license-MIT-f4c430?style=flat-square)](LICENSE)
 
-[Install](#install) · [What it does](#what-it-does) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Supported clients](#supported-clients) · [API](#api) · [Development](#development) · [Roadmap](#roadmap)
+[Install](#install) · [What it does](#what-it-does) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Supported clients](#supported-clients) · [API](#api) · [Development](#development)
 
 <code>https://raw.githubusercontent.com/aldoborrero/jellyfin-kids/gh-pages/manifest.json</code>
 
@@ -219,20 +219,6 @@ scripts/dev-check.sh       # checks against the running dev server: auth, answer
 Features are planned with [spec-kit](https://github.com/github/spec-kit) under [specs/](specs/), following
 the project's [constitution](.specify/memory/constitution.md). Upstream sources used as reference
 (Jellyfin and other plugins) are cloned into `.reference/`, which is not committed.
-
-## Roadmap
-
-- [x] Kid profiles and dashboard pages
-- [x] Household parent code with server-side checks and grants
-- [x] Daily allowance counted on the server
-- [x] Per-kid sitting limit
-- [x] Stop playback when time is up, on every client (opt-in)
-- [x] Live TV channels per kid, with their guide
-- [x] A dashboard that shows each kid's protection gaps, and Reset today
-- [x] Kid avatars, and a warning when Jellyfin hides a picked channel from a kid
-- [x] The kid's Jellyfin profile, libraries, ratings and allowed hours, edited from the kid editor
-- [ ] Recommended restrictions in one step, and picks backed by Jellyfin collections
-- [ ] Per-kid codes, viewing history, and export and import of plugin data
 
 ## License
 
