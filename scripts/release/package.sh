@@ -22,16 +22,37 @@ tag='' manifest_in='' source_url='' out="$root/artifacts"
 
 while (($#)); do
   case $1 in
-    --tag) tag=$2; shift 2 ;;
-    --manifest) manifest_in=$2; shift 2 ;;
-    --source-url) source_url=$2; shift 2 ;;
-    --out) out=$2; shift 2 ;;
-    -h | --help) sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
+    --tag)
+      tag=$2
+      shift 2
+      ;;
+    --manifest)
+      manifest_in=$2
+      shift 2
+      ;;
+    --source-url)
+      source_url=$2
+      shift 2
+      ;;
+    --out)
+      out=$2
+      shift 2
+      ;;
+    -h | --help)
+      sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0"
+      exit 0
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      exit 2
+      ;;
   esac
 done
 
-die() { echo "error: $*" >&2; exit 1; }
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
 for tool in dotnet jq yq zip unzip md5sum; do
   command -v "$tool" >/dev/null || die "$tool not found on PATH"
 done

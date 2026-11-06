@@ -42,7 +42,10 @@ check() {
 # login <user> [password]: prints an access token
 login() {
   req - POST /Users/AuthenticateByName "$(jq -n --arg n "$1" --arg p "${2-}" '{Username: $n, Pw: $p}')"
-  [[ $status == 200 ]] || { echo "Cannot sign in as $1 ($status)" >&2; exit 1; }
+  [[ $status == 200 ]] || {
+    echo "Cannot sign in as $1 ($status)" >&2
+    exit 1
+  }
   jq -r .AccessToken <<<"$body"
 }
 
@@ -52,10 +55,10 @@ req_dev() {
   local token=$1 device=$2 method=$3 path=$4 data=${5-} grant=${6-}
   local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\"" out
   [[ $token != - ]] && auth+=", Token=\"$token\""
-  local headers=(-H "Authorization: $auth" -H 'Content-Type: application/json')
-  [[ -n $grant ]] && headers+=(-H "X-Kids-Grant: $grant")
+  local curl_headers=(-H "Authorization: $auth" -H 'Content-Type: application/json')
+  [[ -n $grant ]] && curl_headers+=(-H "X-Kids-Grant: $grant")
   out=$(mktemp)
-  status=$(curl --silent --output "$out" --write-out '%{http_code}' -X "$method" "$url$path" "${headers[@]}" \
+  status=$(curl --silent --output "$out" --write-out '%{http_code}' -X "$method" "$url$path" "${curl_headers[@]}" \
     ${data:+--data "$data"}) || status=000
   body=$(cat "$out")
   rm -f "$out"
@@ -65,7 +68,10 @@ req_dev() {
 # the device with the token, which is what the plugin trusts, whatever later headers claim
 login_as() {
   req_dev - "$2" POST /Users/AuthenticateByName "$(jq -n --arg n "$1" --arg p "${3-}" '{Username: $n, Pw: $p}')"
-  [[ $status == 200 ]] || { echo "Cannot sign in as $1 on $2 ($status)" >&2; exit 1; }
+  [[ $status == 200 ]] || {
+    echo "Cannot sign in as $1 on $2 ($status)" >&2
+    exit 1
+  }
   jq -r .AccessToken <<<"$body"
 }
 
@@ -84,7 +90,10 @@ configure '.EnforcementEnabled = false | .SittingBreakMinutes = 15'
 # Playback through Jellyfin's own playstate API (feature 3, research R11), on the clip provisioning generates
 req "$admin" GET '/Items?Recursive=true&IncludeItemTypes=Movie&SearchTerm=Test%20Pattern&Fields=RunTimeTicks'
 clip_id=$(jq -r '[.Items[] | select(.RunTimeTicks > 0)][0].Id // empty' <<<"$body")
-[[ -n $clip_id ]] || { echo "The test clip is missing from the Kids library; run the provision step" >&2; exit 1; }
+[[ -n $clip_id ]] || {
+  echo "The test clip is missing from the Kids library; run the provision step" >&2
+  exit 1
+}
 declare -A play_started=()
 
 # play <token> <deviceId> <start|progress|stop> <playSessionId> [paused]: one playstate report; the position follows
@@ -92,7 +101,10 @@ declare -A play_started=()
 play() {
   local token=$1 device=$2 event=$3 session=$4 paused=${5:-false} path
   case $event in
-    start) path=/Sessions/Playing; play_started[$session]=$(date +%s) ;;
+    start)
+      path=/Sessions/Playing
+      play_started[$session]=$(date +%s)
+      ;;
     progress) path=/Sessions/Playing/Progress ;;
     stop) path=/Sessions/Playing/Stopped ;;
   esac
@@ -148,7 +160,10 @@ user_id() { jq -r --arg n "$1" '.[] | select(.Name == $n) | .Id' <<<"$body"; }
 users=$body
 alice_id=$(body=$users user_id alice)
 bob_id=$(body=$users user_id bob)
-[[ -n $alice_id && -n $bob_id ]] || { echo "The dev users alice and bob are missing; run the provision step" >&2; exit 1; }
+[[ -n $alice_id && -n $bob_id ]] || {
+  echo "The dev users alice and bob are missing; run the provision step" >&2
+  exit 1
+}
 alice=$(login alice)
 # Validation errors are ProblemDetails, whose properties are always camelCase
 errors='(.errors // .Errors)'
@@ -228,7 +243,10 @@ wholphin_code=UDLRrg12
 wholphin_verifier='pbkdf2-sha256$120000$f0e1d2c3b4a5968778695a4b3c2d1e0f$fa6a76745eeb53a863f4e826714952f77beb8536eaf52e9a7ee08dd5484df806'
 set_known_lock() { req "$admin" PUT /Kids/Parent/Lock "{\"LockType\":\"REMOTE\",\"Code\":\"$known\"}"; }
 verify() { req_dev "$1" "$2" POST /Kids/Parent/Verify "{\"Code\":\"$3\"}"; }
-alice_rev() { req "$admin" GET "/Kids/Users/$alice_id/Profile"; jq -r .Revision <<<"$body"; }
+alice_rev() {
+  req "$admin" GET "/Kids/Users/$alice_id/Profile"
+  jq -r .Revision <<<"$body"
+}
 
 set_known_lock
 check "setup admin sets the known lock" 200 '.LockType == "REMOTE"'
@@ -279,8 +297,11 @@ check "s without the grant it is refused" 403
 req_dev "$alice_b" kids-check-B PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$((rev + 1))}" "$grant_a"
 check "t a grant from device A is refused on device B" 403
 check_rev=$(alice_rev)
-[[ $check_rev == $((rev + 1)) ]] && echo "PASS t the profile is unchanged" ||
-  { echo "FAIL t the profile changed to revision $check_rev"; failures=$((failures + 1)); }
+[[ $check_rev == $((rev + 1)) ]] && echo "PASS t the profile is unchanged" \
+  || {
+    echo "FAIL t the profile changed to revision $check_rev"
+    failures=$((failures + 1))
+  }
 
 # u. The grant follows the registered device, not the header's claim
 req_dev "$alice_a" kids-check-B PUT "/Kids/Users/$alice_id/Profile" "{\"Revision\":$((rev + 1))}" "$grant_a"
@@ -581,14 +602,14 @@ trap 'restore_alice; configure ".EnforcementEnabled = false | .SittingBreakMinut
 
 # req_h <token|-> <deviceId> <method> <path> [range]: like req_dev, also sets $headers (lower-case names)
 req_h() {
-  local token=$1 device=$2 method=$3 path=$4 range=${5-} out hdr
+  local token=$1 device=$2 method=$3 path=$4 range=${5-} out hdr post=()
   local auth="MediaBrowser Client=\"jellyfin-kids-check\", Device=\"dev\", DeviceId=\"$device\", Version=\"0.0.1\""
   [[ $token != - ]] && auth+=", Token=\"$token\""
+  [[ $method == POST ]] && post=(--data '{}')
   out=$(mktemp)
   hdr=$(mktemp)
   status=$(curl --silent --output "$out" --dump-header "$hdr" --write-out '%{http_code}' -X "$method" "$url$path" \
-    -H "Authorization: $auth" -H 'Content-Type: application/json' ${range:+-H "Range: bytes=$range"} \
-    $([[ $method == POST ]] && echo --data '{}')) || status=000
+    -H "Authorization: $auth" -H 'Content-Type: application/json' ${range:+-H "Range: bytes=$range"} "${post[@]}") || status=000
   body=$(head -c 200000 "$out" | tr -d '\000')
   headers=$(tr -d '\r' <"$hdr" | tr '[:upper:]' '[:lower:]')
   rm -f "$out" "$hdr"
@@ -632,12 +653,15 @@ guarded_routes() {
   )
   local route
   for route in "${routes[@]}"; do
-    req_h "$token" "$device" ${route%% *} "${route#* }" 0-1023
+    req_h "$token" "$device" "${route%% *}" "${route#* }" 0-1023
     if [[ $expect == refused ]]; then
       refused "$name ${route%%\?*}" "$reason"
     elif [[ ${route%% *} == POST ]]; then
       # Opening a live stream on a file is not something the server does; anything but a refusal will do
-      [[ $status != 403 ]] && echo "PASS $name ${route%%\?*} ($status)" || { echo "FAIL $name ${route%%\?*}: 403"; failures=$((failures + 1)); }
+      [[ $status != 403 ]] && echo "PASS $name ${route%%\?*} ($status)" || {
+        echo "FAIL $name ${route%%\?*}: 403"
+        failures=$((failures + 1))
+      }
     else
       served "$name ${route%%\?*}"
     fi
@@ -647,7 +671,11 @@ guarded_routes() {
 # playback_info <token> <deviceId>: sets $body to a POST PlaybackInfo answer
 playback_info() { req_h "$1" "$2" POST "/Items/$clip_id/PlaybackInfo?UserId=$alice_id"; }
 
-set_alice() { local rev; rev=$(alice_rev); req "$admin" PUT "/Kids/Users/$alice_id/Profile" "$(jq -c --argjson r "$rev" '. + {Revision: $r}' <<<"$1")"; }
+set_alice() {
+  local rev
+  rev=$(alice_rev)
+  req "$admin" PUT "/Kids/Users/$alice_id/Profile" "$(jq -c --argjson r "$rev" '. + {Revision: $r}' <<<"$1")"
+}
 
 # ba. Info reports the gate: every guarded route was found on this server
 req - GET /Kids/Info
@@ -668,7 +696,10 @@ configure '.EnforcementEnabled = true'
 playback_info "$alice" kids-check-tv
 check "bc PlaybackInfo POST is 200 NotAllowed with no media" 200 '.ErrorCode == "NotAllowed" and (.MediaSources | length) == 0'
 grep -qx 'x-kids-reason: timeup' <<<"$headers" && echo "PASS bc PlaybackInfo carries X-Kids-Reason" \
-  || { echo "FAIL bc PlaybackInfo has no X-Kids-Reason"; failures=$((failures + 1)); }
+  || {
+    echo "FAIL bc PlaybackInfo has no X-Kids-Reason"
+    failures=$((failures + 1))
+  }
 req_h "$alice" kids-check-tv GET "/Items/$clip_id/PlaybackInfo?UserId=$alice_id"
 check "bc PlaybackInfo GET is 200 NotAllowed" 200 '.ErrorCode == "NotAllowed"'
 guarded_routes "$alice" kids-check-tv "bc alice refused on" refused timeUp
@@ -858,7 +889,10 @@ check "bj admin marks alice again, with no allowance and no time used" 200
 req "$admin" GET /LiveTv/Channels
 peke=$(jq -r '[.Items[] | select(.Name == "PekeTV")][0].Id // empty' <<<"$body")
 news=$(jq -r '[.Items[] | select(.Name == "Grown-ups News")][0].Id // empty' <<<"$body")
-[[ -n $peke && -n $news ]] || { echo "The dev live TV channels are missing; run the provision step" >&2; exit 1; }
+[[ -n $peke && -n $news ]] || {
+  echo "The dev live TV channels are missing; run the provision step" >&2
+  exit 1
+}
 # ids compare without dashes, whatever form an answer uses
 nid() { tr -d '-' <<<"${1,,}"; }
 peke=$(nid "$peke")
@@ -1065,7 +1099,10 @@ play_tv() {
   [[ $status == 204 ]] || echo "  (live playback $event answered $status ${body:0:200})"
 }
 play_tv start
-for ((i = 0; i < 6; i++)); do sleep 10; play_tv progress; done
+for ((i = 0; i < 6; i++)); do
+  sleep 10
+  play_tv progress
+done
 play_tv stop
 sleep 2
 req "$admin" GET /Sessions
@@ -1380,7 +1417,13 @@ fact "gd README.txt says not to delete the folder and names it" \
 fact "gd README.txt names the folder" grep -qF "Folder: $kids_folder" "$kids_folder/README.txt"
 
 # ge. When this dev state was moved from the old folder, the move was logged step by step
-migrated=$(ls "$old_folder"/kids.db.migrated-* 2>/dev/null | grep -v -- '-wal$\|-shm$' | head -1 || true)
+migrated=
+for file in "$old_folder"/kids.db.migrated-*; do
+  if [[ -e $file && $file != *-wal && $file != *-shm ]]; then
+    migrated=$file
+    break
+  fi
+done
 if [[ -n $migrated ]]; then
   move_log=$(grep -l "Kids data found at the old location" "$dev"/log/log_*.log 2>/dev/null | head -1 || true)
   fact "ge the move was logged" test -n "$move_log"
