@@ -29,7 +29,7 @@ public class KidProfileUpdate
     public bool? AutoplayEnabled { get; init; }
 
     /// <summary>
-    /// Gets the autoplay limit, 1–10 (default 3).
+    /// Gets the autoplay limit, 1–10, or 0 for no limit (default 3).
     /// </summary>
     public int? AutoplayCap { get; init; }
 

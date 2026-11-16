@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Kids.Profiles;
 using Jellyfin.Plugin.Kids.Storage;
+using Jellyfin.Plugin.Kids.Tests.Fakes;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -51,6 +52,21 @@ public sealed class KidProfileStoreTests : IDisposable
 
         Assert.Equal(StoreOutcome.AlreadyExists, result.Outcome);
         Assert.Equal(5, result.Profile!.Settings.AutoplayCap);
+    }
+
+    [Fact]
+    public async Task UnlimitedAutoplay_IsStoredAsZero_AndAMissingCapGoesBackToTheDefault()
+    {
+        var userId = Guid.NewGuid();
+        var unlimited = KidProfileValidator.Validate(new KidProfileInput { AutoplayEnabled = true, AutoplayCap = 0 }, null, new FakePickCatalog(), new FakeLiveTvChannelCatalog());
+        await _store.InsertAsync(userId, unlimited.Settings!);
+
+        Assert.Equal(KidProfileSettings.UnlimitedAutoplayCap, (await _store.GetAsync(userId))!.Settings.AutoplayCap);
+
+        var missing = KidProfileValidator.Validate(new KidProfileInput { AutoplayEnabled = true }, unlimited.Settings, new FakePickCatalog(), new FakeLiveTvChannelCatalog());
+        await _store.UpdateIfRevisionAsync(userId, 1, missing.Settings!);
+
+        Assert.Equal(KidProfileSettings.DefaultAutoplayCap, (await _store.GetAsync(userId))!.Settings.AutoplayCap);
     }
 
     [Fact]
