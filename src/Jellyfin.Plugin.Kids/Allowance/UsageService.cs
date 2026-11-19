@@ -136,7 +136,8 @@ public sealed class UsageService : IDisposable
 
             try
             {
-                await _store.AddUsageAsync(snapshot, cancellationToken).ConfigureAwait(false);
+                var today = DayClock.Format(CurrentDayClock().DayOf(_time.GetUtcNow()));
+                await _store.AddUsageAsync(snapshot, today, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -216,15 +217,16 @@ public sealed class UsageService : IDisposable
     }
 
     /// <summary>
-    /// Deletes screen time older than <see cref="UsageStore.RetentionDays"/> days: rows of days before today minus the
-    /// retention period. Today minus exactly the retention period is kept.
+    /// Deletes screen time and the watch log older than the retention setting (<see cref="IKidsSettings.RetentionDays"/>,
+    /// 90 days by default): rows of days before today minus the retention period. Today minus exactly the retention
+    /// period is kept, and so is today whatever the setting, since the daily allowance needs it.
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>How many rows were deleted.</returns>
     public Task<int> PruneAsync(CancellationToken cancellationToken = default)
     {
         var today = CurrentDayClock().DayOf(_time.GetUtcNow());
-        return _store.PruneAsync(DayClock.Format(today.AddDays(-UsageStore.RetentionDays)), cancellationToken);
+        return _store.PruneAsync(DayClock.Format(today.AddDays(-Math.Max(1, _settings.RetentionDays))), cancellationToken);
     }
 
     /// <summary>

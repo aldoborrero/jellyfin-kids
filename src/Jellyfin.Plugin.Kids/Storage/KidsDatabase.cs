@@ -38,7 +38,7 @@ public sealed class KidsDatabase : IDisposable
     /// <summary>
     /// The schema version this code writes (<c>PRAGMA user_version</c>).
     /// </summary>
-    public const long SchemaVersion = 5;
+    public const long SchemaVersion = 6;
 
     // Each step moves the schema from version (index) to version (index + 1)
     private static readonly string[] _migrations =
@@ -86,6 +86,22 @@ public sealed class KidsDatabase : IDisposable
         DROP TABLE bonus;
         ALTER TABLE bonus_new RENAME TO bonus;
         CREATE INDEX bonus_user_day ON bonus (user_id, day);
+        """,
+        // Statistics (feature 22): each day's allowance, always; the watch log and breaks only with advanced statistics.
+        // A segment is upserted by id while it grows; a break by its start when a grown-up ends it early.
+        """
+        CREATE TABLE day_allowance (
+          user_id TEXT NOT NULL, day TEXT NOT NULL, minutes INTEGER CHECK (minutes >= 0), PRIMARY KEY (user_id, day));
+        CREATE TABLE watch_segment (
+          id TEXT PRIMARY KEY, playback_id TEXT NOT NULL, user_id TEXT NOT NULL, day TEXT NOT NULL,
+          started_at TEXT NOT NULL, ended_at TEXT NOT NULL, seconds INTEGER NOT NULL CHECK (seconds >= 0),
+          item_id TEXT, item_type TEXT, item_name TEXT, series_id TEXT, series_name TEXT, season INTEGER, episode INTEGER,
+          channel_id TEXT, channel_name TEXT, device TEXT, client TEXT);
+        CREATE INDEX watch_segment_user_day ON watch_segment (user_id, day);
+        CREATE TABLE break_event (
+          user_id TEXT NOT NULL, day TEXT NOT NULL, started_at TEXT NOT NULL, minutes INTEGER NOT NULL CHECK (minutes >= 0),
+          ended_by_grownup INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_grownup IN (0, 1)), PRIMARY KEY (user_id, started_at));
+        CREATE INDEX break_event_user_day ON break_event (user_id, day);
         """
     ];
 

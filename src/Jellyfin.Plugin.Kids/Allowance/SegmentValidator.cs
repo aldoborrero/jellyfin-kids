@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using Jellyfin.Plugin.Kids.Storage;
 
 namespace Jellyfin.Plugin.Kids.Allowance;
 
@@ -18,6 +17,9 @@ public static class SegmentValidator
 
     /// <summary>The longest segment, in seconds (12 hours).</summary>
     public const int MaxSeconds = 43_200;
+
+    /// <summary>How many days back a segment may start, whatever the retention setting.</summary>
+    public const int MaxAgeDays = 90;
 
     /// <summary>How far in the future a segment may start, for clock skew.</summary>
     public static readonly TimeSpan MaxFutureSkew = TimeSpan.FromMinutes(5);
@@ -37,7 +39,7 @@ public static class SegmentValidator
             return errors;
         }
 
-        var oldest = now.AddDays(-UsageStore.RetentionDays);
+        var oldest = now.AddDays(-MaxAgeDays);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < segments.Count; i++)
         {
@@ -65,7 +67,7 @@ public static class SegmentValidator
 
             if (segment.StartedAt is not { } started || started > now + MaxFutureSkew || started < oldest)
             {
-                errors[key + ".StartedAt"] = [string.Create(CultureInfo.InvariantCulture, $"Must be within the last {UsageStore.RetentionDays} days and at most {MaxFutureSkew.TotalMinutes} minutes in the future.")];
+                errors[key + ".StartedAt"] = [string.Create(CultureInfo.InvariantCulture, $"Must be within the last {MaxAgeDays} days and at most {MaxFutureSkew.TotalMinutes} minutes in the future.")];
             }
         }
 

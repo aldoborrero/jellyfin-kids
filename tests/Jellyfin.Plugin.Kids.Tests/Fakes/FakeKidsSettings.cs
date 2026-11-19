@@ -12,4 +12,8 @@ public sealed class FakeKidsSettings : IKidsSettings
     public bool EnforcementEnabled { get; set; }
 
     public TimeSpan SittingBreak { get; set; } = TimeSpan.FromMinutes(15);
+
+    public bool AdvancedStats { get; set; }
+
+    public int RetentionDays { get; set; } = 90;
 }

@@ -40,4 +40,12 @@ public sealed class PluginKidsSettings : IKidsSettings
     /// <inheritdoc />
     public TimeSpan SittingBreak => TimeSpan.FromMinutes(
         _configuration()?.SittingBreakMinutes is int minutes and >= 1 and <= 240 ? minutes : PluginConfiguration.DefaultSittingBreakMinutes);
+
+    /// <inheritdoc />
+    public bool AdvancedStats => _configuration()?.AdvancedStats ?? false;
+
+    /// <inheritdoc />
+    public int RetentionDays => _configuration()?.StatsRetentionDays is int days && PluginConfiguration.IsRetentionChoice(days)
+        ? days
+        : PluginConfiguration.DefaultStatsRetentionDays;
 }

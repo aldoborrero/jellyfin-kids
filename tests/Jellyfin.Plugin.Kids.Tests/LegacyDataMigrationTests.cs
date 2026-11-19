@@ -82,7 +82,7 @@ public sealed class LegacyDataMigrationTests : IDisposable
             info,
             m => Assert.StartsWith("Kids data found at the old location", m, StringComparison.Ordinal),
             m => Assert.Matches(@"^Copied .* \(\d+ rows: .*kid_profile=1.*\)$", m),
-            m => Assert.Matches("^Verified the copy .*: integrity ok, schema version 5, same rows as ", m),
+            m => Assert.Matches("^Verified the copy .*: integrity ok, schema version 6, same rows as ", m),
             m => Assert.StartsWith("Kids data now in", m, StringComparison.Ordinal),
             m => Assert.StartsWith("Renamed the old database", m, StringComparison.Ordinal));
     }

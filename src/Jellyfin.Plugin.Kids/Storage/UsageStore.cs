@@ -19,17 +19,20 @@ namespace Jellyfin.Plugin.Kids.Storage;
 /// </remarks>
 public sealed class UsageStore
 {
-    /// <summary>
-    /// How many days of screen time are kept, and how old a reported segment may be.
-    /// </summary>
-    public const int RetentionDays = 90;
-
     private const string AddUsageSql = """
         INSERT INTO usage_day (user_id, day, used_ms) VALUES ($id, $day, $ms)
         ON CONFLICT (user_id, day) DO UPDATE SET used_ms = used_ms + excluded.used_ms
         """;
 
-    private static readonly string[] _tables = ["usage_day", "bonus", "reported_segment"];
+    // The kid's allowance as their profile has it now, for the day's statistics (feature 22); no profile, no row
+    private const string NoteAllowanceSql = """
+        INSERT INTO day_allowance (user_id, day, minutes)
+        SELECT user_id, $day, json_extract(settings, '$.DailyAllowanceMinutes') FROM kid_profile WHERE user_id = $id
+        ON CONFLICT (user_id, day) DO UPDATE SET minutes = excluded.minutes
+        """;
+
+    // Every table with a user and a day: purges, pruning and orphan sweeps cover them all (watch log: feature 22)
+    private static readonly string[] _tables = ["usage_day", "bonus", "reported_segment", "day_allowance", "watch_segment", "break_event"];
 
     private readonly KidsDatabase _database;
 
@@ -50,6 +53,20 @@ public sealed class UsageStore
     /// <returns>A task that completes when the amounts are stored.</returns>
     /// <exception cref="ArgumentOutOfRangeException">An amount is zero or negative; nothing is written.</exception>
     public Task AddUsageAsync(IReadOnlyDictionary<(Guid UserId, string Day), long> amounts, CancellationToken cancellationToken = default)
+        => AddUsageAsync(amounts, null, cancellationToken);
+
+    /// <summary>
+    /// Adds playing time to kids' days, and notes today's allowances, all in one transaction.
+    /// </summary>
+    /// <param name="amounts">Milliseconds to add per kid and day; every amount must be positive.</param>
+    /// <param name="today">
+    /// The current day, <c>yyyy-MM-dd</c>, or null: for each kid with time on that day, the allowance their profile has
+    /// now is noted as the day's allowance (feature 22). Earlier days keep what was noted for them.
+    /// </param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that completes when the amounts are stored.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">An amount is zero or negative; nothing is written.</exception>
+    public Task AddUsageAsync(IReadOnlyDictionary<(Guid UserId, string Day), long> amounts, string? today, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(amounts);
         foreach (var amount in amounts)
@@ -73,6 +90,20 @@ public sealed class UsageStore
                     day.Value = amount.Key.Day;
                     ms.Value = amount.Value;
                     await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (today is not null)
+                {
+                    using var note = connection.CreateCommand();
+                    note.Transaction = transaction;
+                    note.CommandText = NoteAllowanceSql;
+                    var noteId = note.Parameters.Add("$id", SqliteType.Text);
+                    note.Parameters.AddWithValue("$day", today);
+                    foreach (var userId in amounts.Keys.Where(k => k.Day == today).Select(k => k.UserId).Distinct())
+                    {
+                        noteId.Value = Key(userId);
+                        await note.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 return true;

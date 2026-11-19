@@ -223,10 +223,14 @@ public sealed class KidsDatabaseTests : IDisposable
         var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
 
         Assert.True(db.EnsureInitialized());
-        Assert.Equal(5L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(KidsDatabase.SchemaVersion, ReadScalar<long>(path, "PRAGMA user_version"));
         Assert.Contains("AUTOINCREMENT", ReadScalar<string>(path, "SELECT sql FROM sqlite_master WHERE name = 'bonus'"), StringComparison.Ordinal);
         Assert.Equal(1L, ReadScalar<long>(path, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'bonus_user_day'"));
         Assert.Equal(1234L, ReadScalar<long>(path, "SELECT used_ms FROM usage_day"));
+
+        // Schema 6 (feature 22): the statistics tables, empty
+        Assert.Equal(3L, ReadScalar<long>(path, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('day_allowance', 'watch_segment', 'break_event')"));
+        Assert.Equal(0L, ReadScalar<long>(path, "SELECT count(*) FROM watch_segment"));
 
         var store = new UsageStore(db);
         var kid = Guid.ParseExact("0123456789abcdef0123456789abcdef", "N");

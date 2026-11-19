@@ -26,4 +26,14 @@ public interface IKidsSettings
     /// Gets how long a kid must have nothing playing for a new sitting to start (1–240 minutes).
     /// </summary>
     TimeSpan SittingBreak { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the watch log is recorded (feature 22).
+    /// </summary>
+    bool AdvancedStats { get; }
+
+    /// <summary>
+    /// Gets how many days screen time and the watch log are kept: 30, 90, 180 or 365.
+    /// </summary>
+    int RetentionDays { get; }
 }
