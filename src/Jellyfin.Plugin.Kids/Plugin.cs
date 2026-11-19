@@ -39,8 +39,9 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()
     {
-        // Kids is the plugin's own settings page (same name as the plugin) and has a dashboard menu entry; KidsUser
-        // edits one kid and is reached from it. Each page loads its ES module through data-controller="__plugin/<Name>".
+        // Kids is the plugin's own settings page (same name as the plugin) and has a dashboard menu entry, as has
+        // KidsStats (feature 22); KidsUser edits one kid and is reached from it. Each page loads its ES module through
+        // data-controller="__plugin/<Name>".
         return
         [
             new PluginPageInfo
@@ -53,7 +54,18 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             },
             new PluginPageInfo { Name = "KidsJs", EmbeddedResourcePath = Resource("kids.js") },
             new PluginPageInfo { Name = "KidsUser", EmbeddedResourcePath = Resource("kidsUser.html") },
-            new PluginPageInfo { Name = "KidsUserJs", EmbeddedResourcePath = Resource("kidsUser.js") }
+            new PluginPageInfo { Name = "KidsUserJs", EmbeddedResourcePath = Resource("kidsUser.js") },
+
+            // Statistics (feature 22): its own menu entry
+            new PluginPageInfo
+            {
+                Name = "KidsStats",
+                DisplayName = "Kids statistics",
+                EmbeddedResourcePath = Resource("kidsStats.html"),
+                EnableInMainMenu = true,
+                MenuIcon = "insights"
+            },
+            new PluginPageInfo { Name = "KidsStatsJs", EmbeddedResourcePath = Resource("kidsStats.js") }
         ];
     }
 
