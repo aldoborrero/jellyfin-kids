@@ -458,8 +458,8 @@ Jellyfin.Plugin.Kids (assembly; plugin name "Kids"; guid d62ee188-270c-49d8-b7b9
 │   └── EnforcementLoop            IHostedService; 5 s timer: warnings, Stop + DisplayMessage, transcode kill, schedule-close stop
 ├── Enforcement/PlaybackGateFilter IAsyncActionFilter via Configure<MvcOptions>; 403 {"kids":"timeUp"} for gated actions
 ├── Events/UserDeletedConsumer     IEventConsumer<UserDeletedEventArgs>: drop profile/usage rows
-├── Tasks/PruneUsageTask           IScheduledTask (found by assembly scanning, not DI): prune screen time older than 90 days
-│                                  daily at 03:30; strict-lock reconciliation comes later
+├── Tasks/PruneUsageTask           IScheduledTask (found by assembly scanning, not DI): prune screen time and the watch log older
+│                                  than the retention setting (90 days by default, feature 22) daily at 03:30; strict-lock reconciliation comes later
 └── Api/                       KidsController (route prefix /Kids), ParentLockController (/Kids/Parent) and
                                AllowanceController (/Kids/Users/{userId}: Status, WatchTime/Bonus, WatchTime/Report)
 ```
@@ -525,6 +525,8 @@ NuGet packages (more detail in §6.4):
 | `GET /Kids/Admin/PickCandidates` | admin | `?search=&ids=&limit=` → `[{id, name, type:"BoxSet"\|"Playlist"}]`, every collection and playlist on the server whoever owns them (Jellyfin's `/Items` hides other users' private playlists from admins), for the picks chooser |
 | `GET /Kids/Users/{userId}/LiveTv/Channels`, `…/LiveTv/Programs` | self or admin, IgnoreParentalControl | (feature 6) the kid's allowed channels with the program on now, and their guide for a window (default 24 h, at most 7 days), in Jellyfin's `QueryResult<BaseItemDto>` shape |
 | `GET /Kids/Admin/LiveTvChannels` | admin | (feature 6) every live TV channel `[{id, name, number, imageTag, type}]`, for the kid editor |
+| `GET /Kids/Users/{userId}/Stats` | admin or grant | (feature 22) `?days=1–90` (7) → minutes per day with bonus and allowance, and with advanced statistics the top 5 series and the breaks; contract `specs/022-kids-stats/contracts/kids-api-v1-stats.md` |
+| `GET /Kids/Users/{userId}/Stats/Detail`, `GET` and `DELETE /Kids/Admin/WatchLog` | admin or grant; admin | (feature 22) the dashboard's statistics page: per day by series, per series with episodes, per hour, per device; the watch log's size and its deletion |
 
 Errors use `ProblemDetails`. The gate filter's 403 body is `{"kids":"timeUp","remainingSeconds":0}` or
 `{"kids":"outsideSchedule"}`.
