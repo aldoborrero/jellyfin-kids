@@ -1,4 +1,4 @@
-# Contract: Kids client API 1.3 (feature 22: statistics)
+# Contract: Kids client API 1.4 (feature 22: statistics)
 
 Agreed with the Peke task on 2026-11-19; neither side changes it without saying so. Additive: `ApiVersion` stays 1.
 The JSON rules of the earlier contracts apply (PascalCase by default, camelCase with `profile="CamelCase"`,
@@ -6,7 +6,7 @@ ProblemDetails camelCase), except that the two nullable fields below are **alway
 
 ## GET /Kids/Info (changed, anonymous)
 
-`ApiMinorVersion` 3, and `Features` gains `stats` (the endpoint below exists). `advancedStats` is **not** a feature:
+`ApiMinorVersion` 4, and `Features` gains `stats` (the endpoint below exists). `advancedStats` is **not** a feature:
 whether the household turned it on is a field of the Stats answer.
 
 ## GET /Kids/Users/{userId}/Stats?days=N (new)

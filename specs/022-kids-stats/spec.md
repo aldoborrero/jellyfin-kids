@@ -33,8 +33,8 @@ Builds on [feature 3](../003-kids-allowance-tracking/spec.md) (usage per day, bo
   that moment (`day_allowance`). A day with nothing noted (no play, or before this version) shows today's allowance.
   Today always shows the profile as it is now. This is recorded whatever `AdvancedStats` says: it is as small as
   `usage_day` and only says what the kid was allowed.
-- **D5. API minor version 3, feature `stats`.** On `main` the minor version is 2; this feature takes 3. The branch
-  `unlimited-autoplay` also takes 3; whichever merges second takes the next number (see the handoff).
+- **D5. API minor version 4, feature `stats`.** It builds on feature 21 (`unlimited-autoplay`, minor 3), which
+  merges first; this feature takes 4. Clients detect it by the `stats` feature, not by the number.
 
 ## Segment rules (R2)
 
@@ -94,7 +94,7 @@ A plugin older than this one refuses a schema-6 database (kids data unavailable)
 - II: statistics are read-only; no client can change them; the delete is admin only.
 - III: every route uses `IgnoreParentalControl`; nothing blocks.
 - IV: no telemetry, all data stays in `kids.db`; the page HTML holds nothing per household.
-- V: additive (`ApiMinorVersion` 3, feature `stats`).
+- V: additive (`ApiMinorVersion` 4, feature `stats`).
 - VI: tests for segment rules, recording on/off, breaks, pruning, the endpoint shape and access.
 
 ## Verification

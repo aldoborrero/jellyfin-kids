@@ -127,7 +127,7 @@ major version changes only on breaking changes, the minor one on additions). The
 - [Avatars, API 1.1 and channel ratings](specs/012-kids-avatar/contracts/kids-api-v1-avatar.md)
 - [Bonus undo and End break, API 1.2](specs/013-bonus-undo-break/contracts/kids-api-v1-bonus-undo-break.md)
 - [Autoplay without a limit, API 1.3](specs/021-unlimited-autoplay/contracts/kids-api-v1-unlimited-autoplay.md)
-- [Statistics, API 1.3](specs/022-kids-stats/contracts/kids-api-v1-stats.md)
+- [Statistics, API 1.4](specs/022-kids-stats/contracts/kids-api-v1-stats.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 
