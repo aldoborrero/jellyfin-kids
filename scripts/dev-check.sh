@@ -770,6 +770,9 @@ download_pid=$!
 play "$alice" kids-check-bg start kids-check-bg
 while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) - started < left + 60)); do
   sleep 5
+  # Once the download is cut, report no more, like a player that stopped: a report after the cut would show her
+  # playing again
+  kill -0 "$download_pid" 2>/dev/null || break
   play "$alice" kids-check-bg progress kids-check-bg >/dev/null
 done
 cut_after=$(($(date +%s) - started))
@@ -810,6 +813,8 @@ download_pid=$!
 play "$alice" kids-check-bh start kids-check-bh
 while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) < end_epoch + 60)); do
   sleep 5
+  # Once the download is cut, report no more: a report after the cut would show her playing again
+  kill -0 "$download_pid" 2>/dev/null || break
   play "$alice" kids-check-bh progress kids-check-bh >/dev/null
 done
 cut_at=$(($(date +%s) - end_epoch))
