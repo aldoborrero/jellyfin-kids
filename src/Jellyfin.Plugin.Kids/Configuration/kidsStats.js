@@ -413,6 +413,8 @@ function renderDays(view, stats) {
         root.append(group);
     });
     chart.replaceChildren(root);
+    // On a narrow screen the chart scrolls sideways: start at the end, so today is in view
+    chart.scrollLeft = chart.scrollWidth;
 
     const items = [...keys.values()].map((key) => [key.colour, key.name]);
     if (usedOthers) {
@@ -595,6 +597,11 @@ function selectTab(view, tab, focus) {
     view.querySelectorAll('.kidsPanel').forEach((panel) => {
         panel.hidden = panel.dataset.tab !== tab;
     });
+    if (tab === 'day') {
+        // Drawn while hidden it could not scroll: bring today into view now
+        const chart = view.querySelector('.kidsDayChart');
+        chart.scrollLeft = chart.scrollWidth;
+    }
 }
 
 function loadStats(view) {
