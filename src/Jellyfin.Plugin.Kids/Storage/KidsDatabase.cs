@@ -163,6 +163,12 @@ public sealed class KidsDatabase : IDisposable
     public string DatabasePath { get; }
 
     /// <summary>
+    /// Gets a value indicating whether the database was already found unusable, without opening it: false until
+    /// <see cref="EnsureInitialized"/> has run. Cheap enough for event handlers.
+    /// </summary>
+    public bool IsKnownUnusable => _initialized.IsValueCreated && !_initialized.Value;
+
+    /// <summary>
     /// Creates and migrates the database the first time it is called; later calls return the same result.
     /// Never throws.
     /// </summary>

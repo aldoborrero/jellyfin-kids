@@ -48,6 +48,11 @@ public sealed class StatsStore
     }
 
     /// <summary>
+    /// Gets a value indicating whether the database was already found unusable. No I/O.
+    /// </summary>
+    public bool IsKnownUnusable => _database.IsKnownUnusable;
+
+    /// <summary>
     /// Writes watch segments and breaks in one transaction: a segment already stored gets its new end and seconds, a
     /// break its new length.
     /// </summary>

@@ -28,6 +28,12 @@ namespace Jellyfin.Plugin.Kids.Stats;
 /// </remarks>
 public sealed class WatchLog : IDisposable
 {
+    /// <summary>
+    /// The most ended segments, and the most breaks, kept in memory while they cannot be written. Past it the oldest
+    /// are dropped, so a database that keeps failing cannot grow memory without end.
+    /// </summary>
+    public const int MaxPending = 10_000;
+
     /// <summary>How long nothing may be counted in a playback before the next counted time starts a new segment.</summary>
     public static readonly TimeSpan SegmentGap = TimeSpan.FromMinutes(2);
 
@@ -42,6 +48,8 @@ public sealed class WatchLog : IDisposable
     private readonly Dictionary<(Guid UserId, DateTimeOffset StartedAt), (BreakRecord Break, int Version)> _breaks = [];
     private int _breakVersion;
     private bool _flushFailing;
+    private int _dropped;
+    private bool _droppedLogged;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="WatchLog"/> class.
@@ -58,8 +66,20 @@ public sealed class WatchLog : IDisposable
         _logger = logger;
     }
 
-    /// <summary>Gets a value indicating whether the watch log is recorded now.</summary>
-    public bool Enabled => _settings.AdvancedStats;
+    /// <summary>Gets a value indicating whether the watch log is recorded now: on, and the database not known unusable.</summary>
+    public bool Enabled => _settings.AdvancedStats && !_store.IsKnownUnusable;
+
+    /// <summary>Gets how many ended segments and breaks wait to be written.</summary>
+    public int PendingCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _closed.Count + _breaks.Count;
+            }
+        }
+    }
 
     /// <summary>Gets how many segments are open.</summary>
     public int OpenCount
@@ -183,6 +203,11 @@ public sealed class WatchLog : IDisposable
         lock (_lock)
         {
             _breaks[(notice.Kid, notice.StartedAt)] = (record, ++_breakVersion);
+            if (_breaks.Count > MaxPending)
+            {
+                _breaks.Remove(_breaks.MinBy(b => b.Value.Version).Key);
+                _dropped++;
+            }
         }
     }
 
@@ -232,13 +257,27 @@ public sealed class WatchLog : IDisposable
                     _logger.LogWarning(ex, "Could not store the kids watch log; keeping {Count} pending row(s)", rows.Count + breakRows.Count);
                 }
 
+                if (!_droppedLogged && DroppedSoFar() > 0)
+                {
+                    _droppedLogged = true;
+                    _logger.LogWarning("The kids watch log still cannot be stored; dropping the oldest rows past {Max} pending", MaxPending);
+                }
+
                 return false;
             }
 
-            if (_flushFailing)
+            int dropped;
+            lock (_lock)
+            {
+                dropped = _dropped;
+                _dropped = 0;
+            }
+
+            _droppedLogged = false;
+            if (_flushFailing || dropped > 0)
             {
                 _flushFailing = false;
-                _logger.LogInformation("Stored the kids watch log again");
+                _logger.LogInformation("Stored the kids watch log again; {Dropped} older row(s) were dropped while it could not be stored", dropped);
             }
 
             lock (_lock)
@@ -300,12 +339,25 @@ public sealed class WatchLog : IDisposable
 
     private DayClock Clock() => new(_settings.Zone, _settings.DayStartsAtHour);
 
+    private int DroppedSoFar()
+    {
+        lock (_lock)
+        {
+            return _dropped;
+        }
+    }
+
     private void Close((string SessionId, string PlaySessionId) key, Segment segment)
     {
         _open.Remove(key);
         if (segment.Version != segment.WrittenVersion)
         {
             _closed.Add(segment);
+            if (_closed.Count > MaxPending)
+            {
+                _closed.RemoveAt(0);
+                _dropped++;
+            }
         }
     }
 

@@ -7,6 +7,8 @@ using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Stats;
 using Jellyfin.Plugin.Kids.Storage;
 using Jellyfin.Plugin.Kids.Tests.Fakes;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -219,5 +221,107 @@ public sealed class WatchLogTests : IDisposable
         Assert.Equal(0, _log.OpenCount);
         Assert.Empty(await StoredAsync());
         Assert.Equal((0L, 0L, (string?)null), await _store.CountWatchLogAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task FailedFlush_KeepsEverything_AndTheNextFlushWritesIt()
+    {
+        var logger = new ListLogger<WatchLog>();
+        using var log = new WatchLog(_store, _roster, _settings, logger);
+        log.Played("s1", "p1", _kid, _taxi, "Salón TV", "Peke", _t0, _t0.AddSeconds(30));
+        log.Stopped("s1", "p1");
+        log.OnBreak(new BreakNotice(_kid, _t0, TimeSpan.FromMinutes(15), false));
+        Assert.True(_db.EnsureInitialized());
+        Execute("ALTER TABLE watch_segment RENAME TO watch_segment_hidden");
+
+        Assert.False(await log.FlushAsync(TestContext.Current.CancellationToken));
+        Assert.False(await log.FlushAsync(TestContext.Current.CancellationToken));
+        Execute("ALTER TABLE watch_segment_hidden RENAME TO watch_segment");
+        Assert.True(await log.FlushAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(30, Assert.Single(await _store.ReadSegmentsAsync(_kid, "2026-01-01", "2026-12-31", TestContext.Current.CancellationToken)).Seconds);
+        Assert.Single(await _store.ReadBreaksAsync(_kid, "2026-01-01", "2026-12-31", TestContext.Current.CancellationToken));
+        Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Single(logger.Entries, e => e.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public async Task FailingFlushes_KeepAtMostMaxPending_DroppingTheOldest_AndSayItOnce()
+    {
+        var logger = new ListLogger<WatchLog>();
+        using var log = new WatchLog(_store, _roster, _settings, logger);
+        Assert.True(_db.EnsureInitialized());
+        Execute("ALTER TABLE watch_segment RENAME TO watch_segment_hidden");
+        for (var i = 0; i <= WatchLog.MaxPending; i++)
+        {
+            var session = "s" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            log.Played(session, "p", _kid, _taxi, "Salón TV", "Peke", _t0.AddSeconds(i), _t0.AddSeconds(i + 1));
+            log.Stopped(session, "p");
+        }
+
+        Assert.False(await log.FlushAsync(TestContext.Current.CancellationToken));
+        log.Played("late", "p", _kid, _taxi, "Salón TV", "Peke", _t0.AddDays(1), _t0.AddDays(1).AddSeconds(1));
+        log.Stopped("late", "p");
+        Assert.False(await log.FlushAsync(TestContext.Current.CancellationToken));
+        Execute("ALTER TABLE watch_segment_hidden RENAME TO watch_segment");
+        Assert.True(await log.FlushAsync(TestContext.Current.CancellationToken));
+
+        var stored = await _store.ReadSegmentsAsync(_kid, "2026-01-01", "2026-12-31", TestContext.Current.CancellationToken);
+        Assert.Equal(WatchLog.MaxPending, stored.Count);
+        Assert.Equal(_t0.AddSeconds(2), stored.Min(s => s.StartedAt));
+        Assert.Contains(stored, s => s.StartedAt == _t0.AddDays(1));
+        Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("dropp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void UnusableDatabase_RecordsNothing()
+    {
+        using var folder = new TempFolder();
+        string path;
+        using (var db = new KidsDatabase(folder.Path, NullLogger<KidsDatabase>.Instance))
+        {
+            Assert.True(db.EnsureInitialized());
+            path = db.DatabasePath;
+        }
+
+        using (var connection = new SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA user_version = 99";
+            command.ExecuteNonQuery();
+        }
+
+        using var unusable = new KidsDatabase(folder.Path, NullLogger<KidsDatabase>.Instance);
+        Assert.False(unusable.EnsureInitialized());
+        using var log = new WatchLog(new StatsStore(unusable), _roster, _settings, NullLogger<WatchLog>.Instance);
+
+        log.Played("s1", "p1", _kid, _taxi, "Salón TV", "Peke", _t0, _t0.AddSeconds(30));
+        log.OnBreak(new BreakNotice(_kid, _t0, TimeSpan.FromMinutes(15), false));
+
+        Assert.Equal(0, log.OpenCount);
+        Assert.Equal(0, log.PendingCount);
+    }
+
+    [Fact]
+    public async Task TurnedOffDuringPlayback_TheOpenSegmentIsStillEndedAndWritten()
+    {
+        Play(_taxi, 0, 30);
+        _settings.AdvancedStats = false;
+        Play(_taxi, 30, 60);
+
+        Assert.Equal(1, _log.Sweep(_t0.AddSeconds(30) + PlaybackClock.IdleTimeout));
+        var segment = Assert.Single(await StoredAsync());
+        Assert.Equal(30, segment.Seconds);
+        Assert.Equal(0, _log.OpenCount);
+    }
+
+    private void Execute(string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={_db.DatabasePath};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
     }
 }
