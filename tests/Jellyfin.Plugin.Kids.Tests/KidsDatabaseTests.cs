@@ -245,6 +245,35 @@ public sealed class KidsDatabaseTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureInitialized_FromARealVersion5File_AddsTheStatisticsTablesAndKeepsEverything()
+    {
+        // Written by main's plugin (0.11) on a dev server, not by hand: the upgrade the owner will run
+        Directory.CreateDirectory(_folder.Path);
+        var path = Path.Combine(_folder.Path, KidsDatabase.FileName);
+        Execute(path, File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "kids-schema5.sql")));
+        Assert.Equal(5L, ReadScalar<long>(path, "PRAGMA user_version"));
+
+        var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
+
+        Assert.True(db.EnsureInitialized());
+        Assert.Equal(6L, ReadScalar<long>(path, "PRAGMA user_version"));
+        Assert.Equal(3L, ReadScalar<long>(path, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('day_allowance', 'watch_segment', 'break_event')"));
+        Assert.Equal("ok", ReadScalar<string>(path, "PRAGMA integrity_check"));
+
+        var kid = Guid.ParseExact("bb06175385d34dee9f4fd064a13dd904", "N");
+        var usage = new UsageStore(db);
+        Assert.Equal(30_638L, await usage.GetUsedMsAsync(kid, "2026-11-25"));
+        Assert.Equal(15, await usage.GetBonusMinutesAsync(kid, "2026-11-25"));
+        var profile = await new KidProfileStore(db).GetAsync(kid);
+        Assert.Equal(60, profile!.Settings.DailyAllowanceMinutes);
+
+        // The new tables take writes, and the bonus ids keep counting
+        Assert.Equal(2L, await usage.AddBonusAsync(kid, "2026-11-25", 5, "admin", DateTimeOffset.UnixEpoch));
+        await usage.AddUsageAsync(new System.Collections.Generic.Dictionary<(Guid UserId, string Day), long> { [(kid, "2026-11-25")] = 1000 }, "2026-11-25");
+        Assert.Equal(60L, ReadScalar<long>(path, "SELECT minutes FROM day_allowance"));
+    }
+
+    [Fact]
     public void OpenConnection_UsesPrivateCacheNoPoolingAndWal()
     {
         var db = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);

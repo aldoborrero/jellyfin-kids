@@ -32,4 +32,8 @@
     <ProjectReference Include="../../src/Jellyfin.Plugin.Kids/Jellyfin.Plugin.Kids.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
