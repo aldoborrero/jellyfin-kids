@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Events;
 using Jellyfin.Plugin.Kids.Allowance;
 using Microsoft.Extensions.Logging;
 
@@ -51,6 +52,12 @@ public sealed class PlaybackEnforcer
         _time = time;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Raised with the session id just before the plugin ends a session's playback on the server, so its playing time
+    /// stops there: a client report that crosses the stop shows it playing again, but that is not watching.
+    /// </summary>
+    public event EventHandler<GenericEventArgs<string>>? PlaybackEnding;
 
     /// <summary>
     /// Gets or sets how long the time's-up message shows before Stop, so it can be read.
@@ -261,6 +268,11 @@ public sealed class PlaybackEnforcer
         }
 
         var cut = _deliveries.AbortAll(session.UserId);
+        await Step("playing time end", session, () =>
+        {
+            PlaybackEnding?.Invoke(this, new GenericEventArgs<string>(session.Id));
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
         var ended = false;
         await Step("end of playback", session, async () => ended = await _control.EndPlaybackAsync(session.Id).ConfigureAwait(false)).ConfigureAwait(false);
         if (full)

@@ -23,6 +23,9 @@ public sealed class PlaybackClock
 
     private readonly Dictionary<(string SessionId, string PlaySessionId), Record> _records = [];
 
+    // Sessions whose playback the plugin ended, with their last event: nothing is counted for them until a new start
+    private readonly Dictionary<string, DateTimeOffset> _ended = [];
+
     /// <summary>
     /// Gets how many playbacks are being followed.
     /// </summary>
@@ -38,6 +41,17 @@ public sealed class PlaybackClock
         ArgumentNullException.ThrowIfNull(playbackEvent);
         var key = (playbackEvent.SessionId, playbackEvent.PlaySessionId ?? string.Empty);
         var at = playbackEvent.At;
+        if (_ended.ContainsKey(playbackEvent.SessionId))
+        {
+            if (playbackEvent.Kind != PlaybackEventKind.Start)
+            {
+                _ended[playbackEvent.SessionId] = at;
+                return [];
+            }
+
+            _ended.Remove(playbackEvent.SessionId);
+        }
+
         if (!_records.TryGetValue(key, out var record))
         {
             // A start, or a playback that began before the plugin or before the user became a kid: count from now
@@ -79,16 +93,44 @@ public sealed class PlaybackClock
     }
 
     /// <summary>
-    /// Removes the playbacks with no event for <see cref="IdleTimeout"/>.
+    /// Ends every playback of a session the plugin stopped: each counts up to <paramref name="at"/>, as with a stop, and
+    /// nothing more is counted for the session until a new start.
+    /// </summary>
+    /// <remarks>
+    /// A client report that crosses the stop makes the server show the session playing again, and restarts its
+    /// automatic progress until its idle check, up to 10 minutes later. None of that is watching.
+    /// </remarks>
+    /// <param name="sessionId">The session.</param>
+    /// <param name="at">When its playback was ended.</param>
+    /// <returns>The wall-clock intervals to count, with the user to count them for.</returns>
+    public IReadOnlyList<(Guid UserId, DateTimeOffset From, DateTimeOffset To)> End(string sessionId, DateTimeOffset at)
+    {
+        List<(Guid UserId, DateTimeOffset From, DateTimeOffset To)> counted = [];
+        foreach (var (key, record) in _records.Where(r => r.Key.SessionId == sessionId).ToList())
+        {
+            counted.AddRange(Apply(new PlaybackEvent(PlaybackEventKind.Stop, sessionId, key.PlaySessionId, record.OwnerUserId, false, false, at)));
+        }
+
+        _ended[sessionId] = at;
+        return counted;
+    }
+
+    /// <summary>
+    /// Removes the playbacks with no event for <see cref="IdleTimeout"/>, and forgets ended sessions just as idle.
     /// </summary>
     /// <param name="now">The current time.</param>
-    /// <returns>How many were removed.</returns>
+    /// <returns>How many playbacks were removed.</returns>
     public int Sweep(DateTimeOffset now)
     {
         var idle = _records.Where(r => now - r.Value.LastEventAt >= IdleTimeout).Select(r => r.Key).ToList();
         foreach (var key in idle)
         {
             _records.Remove(key);
+        }
+
+        foreach (var sessionId in _ended.Where(e => now - e.Value >= IdleTimeout).Select(e => e.Key).ToList())
+        {
+            _ended.Remove(sessionId);
         }
 
         return idle.Count;

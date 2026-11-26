@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Events;
 using Jellyfin.Plugin.Kids.Allowance;
 using Jellyfin.Plugin.Kids.Enforcement;
 using Jellyfin.Plugin.Kids.Profiles;
@@ -83,6 +84,7 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         _sessions.PlaybackStart += OnPlaybackStart;
         _sessions.PlaybackProgress += OnPlaybackProgress;
         _sessions.PlaybackStopped += OnPlaybackStopped;
+        _enforcer.PlaybackEnding += OnPlaybackEnding;
         _timer = _time.CreateTimer(_ => _ = TickAsync(), null, FlushInterval, FlushInterval);
     }
 
@@ -92,6 +94,7 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         _sessions.PlaybackStart -= OnPlaybackStart;
         _sessions.PlaybackProgress -= OnPlaybackProgress;
         _sessions.PlaybackStopped -= OnPlaybackStopped;
+        _enforcer.PlaybackEnding -= OnPlaybackEnding;
         _timer?.Dispose();
         _timer = null;
         await FlushSafeAsync().ConfigureAwait(false);
@@ -110,6 +113,19 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         {
             // Stored soon after a stop, without blocking the session manager (FR-007)
             _ = Task.Run(FlushSafeAsync);
+        }
+    }
+
+    private void OnPlaybackEnding(object? sender, GenericEventArgs<string> e)
+    {
+        // The plugin ends this playback: it counts up to now, and not the late report or synthesized progress after it
+        lock (_lock)
+        {
+            foreach (var (userId, from, to) in _clock.End(e.Argument, _time.GetUtcNow()))
+            {
+                _usage.AddPlayed(userId, from, to);
+                _enforcement.OnPlayed(userId, from, to);
+            }
         }
     }
 

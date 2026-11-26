@@ -170,4 +170,77 @@ public class PlaybackClockTests
 
         Assert.Equal([(_alice, _t0, _t0.AddSeconds(10))], _counted);
     }
+
+    private void End(double atSeconds, string session = "s1")
+        => _counted.AddRange(_clock.End(session, _t0.AddSeconds(atSeconds)));
+
+    [Fact]
+    public void EndedSession_CountsUpToTheEnd_ThenNothingFromAReportThatCrossedTheStop()
+    {
+        // What the server sends when enforcement stops a playback and the client's report crosses the stop: the
+        // plugin's end, Jellyfin's Stop without a PlaySessionId, the late real report, then a minute of the automatic
+        // progress it restarts
+        Send(PlaybackEventKind.Start, 0);
+        Send(PlaybackEventKind.Progress, 5);
+        Send(PlaybackEventKind.Progress, 10);
+        End(12);
+        Send(PlaybackEventKind.Stop, 12, play: null);
+        Send(PlaybackEventKind.Progress, 13);
+        for (var t = 14; t <= 80; t++)
+        {
+            Send(PlaybackEventKind.Progress, t, automated: true);
+        }
+
+        Assert.Equal(TimeSpan.FromSeconds(12), Total());
+        Assert.Equal(0, _clock.Count);
+    }
+
+    [Fact]
+    public void EndedSession_EndsEachOfItsPlaybacks_AndNoOtherSession()
+    {
+        Send(PlaybackEventKind.Start, 0, play: "p1");
+        Send(PlaybackEventKind.Start, 0, play: "p2");
+        Send(PlaybackEventKind.Start, 0, session: "s2");
+        End(10);
+        Send(PlaybackEventKind.Progress, 20, play: "p1");
+        Send(PlaybackEventKind.Progress, 20, play: "p2");
+        Send(PlaybackEventKind.Progress, 20, session: "s2");
+
+        Assert.Equal(TimeSpan.FromSeconds(40), Total());
+    }
+
+    [Fact]
+    public void EndedSession_CountsAgainFromANewStart()
+    {
+        Send(PlaybackEventKind.Start, 0);
+        End(10);
+        Send(PlaybackEventKind.Progress, 15);
+        Send(PlaybackEventKind.Start, 100, play: "p2");
+        Send(PlaybackEventKind.Progress, 110, play: "p2");
+
+        Assert.Equal(TimeSpan.FromSeconds(20), Total());
+    }
+
+    [Fact]
+    public void EndedSession_IsForgottenOnceTheServerIsQuietForTheIdleTimeout()
+    {
+        Send(PlaybackEventKind.Start, 0);
+        End(10);
+
+        // Still sending (the automatic progress of a session the server shows playing): still ignored
+        for (var t = 11; t <= 400; t += 10)
+        {
+            Send(PlaybackEventKind.Progress, t, automated: true);
+        }
+
+        _clock.Sweep(_t0.AddSeconds(400));
+        Send(PlaybackEventKind.Progress, 401, automated: true);
+        Assert.Equal(TimeSpan.FromSeconds(10), Total());
+
+        // Quiet for six minutes: forgotten, and a later report starts counting like any unknown playback
+        _clock.Sweep(_t0.AddSeconds(401).Add(PlaybackClock.IdleTimeout));
+        Send(PlaybackEventKind.Progress, 900);
+        Send(PlaybackEventKind.Progress, 910);
+        Assert.Equal(TimeSpan.FromSeconds(20), Total());
+    }
 }
