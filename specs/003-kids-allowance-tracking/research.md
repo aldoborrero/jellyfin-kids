@@ -42,6 +42,10 @@ DLL's metadata strings. The research of features 1 and 2 still applies.
   - **Stop** applies step 1, then removes the record.
   - **A progress event for an unknown key** (the plugin started mid-playback, or the user was marked as a kid
     mid-playback) creates the record like a start, so counting begins from the next report (spec edge case).
+  - **When enforcement ends a session's playback** (feature 5), every record of that session counts up to then, as
+    with a stop, and nothing more is counted for the session until a new start. A client report that crosses the stop
+    shows the session playing again, and the server's automatic progress then runs until its idle check, so without
+    this a stopped kid kept being charged up to 60 s.
   - **A sweep removes records** with no event for 6 minutes. That is longer than the server's own 5-minute idle check,
     so the server ends them first in normal cases.
 - **Why each limit**:

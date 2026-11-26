@@ -76,6 +76,32 @@ public class PlaybackEnforcerTests
     }
 
     [Fact]
+    public async Task EachStop_SaysWhichSessionItEnds_BeforeEndingItsPlayback()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, 0, 0), null, null);
+        _enforcer.PlaybackEnding += (_, e) => _control.Calls.Add($"ending {e.Argument}");
+
+        await _enforcer.OnPlayback(_web, automated: false);
+        _time.Advance(PlaybackEnforcer.RepeatInterval);
+        await _enforcer.OnPlayback(_web, automated: false);
+
+        Assert.Equal(
+            ["dialog web Time's up: Screen time is over for today.", "stop web", "kill dev-web", "ending web", "end web", "stop web", "kill dev-web", "ending web", "end web"],
+            _control.Snapshot());
+    }
+
+    [Fact]
+    public async Task APlaybackEndingHandlerThatThrows_DoesNotStopTheEnd()
+    {
+        _state.SetKid(Kid, new KidBudget(Today, 0, 0, 0), null, null);
+        _enforcer.PlaybackEnding += (_, _) => throw new InvalidOperationException("boom");
+
+        await _enforcer.OnPlayback(_web, automated: false);
+
+        Assert.Equal("end web", _control.Snapshot()[^1]);
+    }
+
+    [Fact]
     public async Task AutomatedTicksWhileDenied_NeverRepeat()
     {
         _state.SetKid(Kid, new KidBudget(Today, 0, 0, 0), null, null);
