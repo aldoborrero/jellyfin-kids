@@ -198,6 +198,27 @@ public sealed class StatsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ResetDay_ClearsTheMinutes_AndKeepsTheWatchLog()
+    {
+        // Spec D6: the log is what was watched, the reset is about the allowance
+        var kid = await _f.MarkAsync(60);
+        _f.Settings.AdvancedStats = true;
+        _f.Play(kid, Episode(_bluey, "Bluey", 1), DaysAgo(0, 10), 3000, play: "a");
+        _f.Watch.OnBreak(new BreakNotice(kid, DaysAgo(0, 11), TimeSpan.FromMinutes(15), false));
+        await _f.Usage.FlushAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(await _f.Usage.ResetDayAsync(kid, TestContext.Current.CancellationToken));
+
+        var stats = (await _f.Service.GetAsync(kid, 1, TestContext.Current.CancellationToken))!;
+        Assert.Equal(0, Assert.Single(stats.Days).UsedMinutes);
+        Assert.Equal(50, Assert.Single(stats.TopSeries).Minutes);
+        Assert.Single(stats.Breaks);
+        var detail = (await _f.Service.GetDetailAsync(kid, 1, TestContext.Current.CancellationToken))!;
+        Assert.Equal(0, detail.Days[0].UsedSeconds);
+        Assert.Equal(3000, Assert.Single(detail.Days[0].Series).Seconds);
+    }
+
+    [Fact]
     public async Task LiveProgramme_IsNamedAfterItsChannel()
     {
         var kid = await _f.MarkAsync(null);

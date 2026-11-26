@@ -23,7 +23,9 @@ Builds on [feature 3](../003-kids-allowance-tracking/spec.md) (usage per day, bo
 - **D2. Retention is one setting for all screen-time data.** `StatsRetentionDays` (30, 90, 180 or 365; other values
   read as 90) replaces the 90-day constant for `usage_day`, `bonus`, `reported_segment`, the noted allowances and the
   watch log. Today is never pruned, whatever the value, since the daily allowance needs it. A change applies at the
-  next run of the daily "Prune kids screen time" task. Offline reports keep their own 90-day age limit.
+  next run of the daily "Prune kids screen time" task. Offline reports keep their own 90-day age limit, so the ids of
+  reported segments (`reported_segment`) are kept for the longer of the retention and 90 days: a TV resending its
+  offline queue after a short retention pruned the day is not counted twice.
 - **D3. Turning it off keeps the data.** Recording stops at once. What was kept stays until it ages out with the
   retention, or until an administrator deletes it with "Delete the watch log" on the statistics page (which keeps
   minutes per day). While off, `TopSeries` and `Breaks` are empty for clients; the dashboard still shows what was kept,
@@ -35,6 +37,10 @@ Builds on [feature 3](../003-kids-allowance-tracking/spec.md) (usage per day, bo
   `usage_day` and only says what the kid was allowed.
 - **D5. API minor version 4, feature `stats`.** It builds on feature 21 (`unlimited-autoplay`, minor 3), which
   merges first; this feature takes 4. Clients detect it by the `stats` feature, not by the number.
+- **D6. Reset keeps the watch log.** Reset (feature 13) clears the day's counted minutes and bonuses, which are about
+  the allowance; the watch log and the breaks say what was watched and stay. After a reset `UsedMinutes` can be lower
+  than the day's segments: `TopSeries` still counts what was watched. The dashboard's day chart scales to the higher
+  of the two, so no bar leaves the chart, and the bar's tooltip shows both ("watched 50 min, counted 0 min").
 
 ## Segment rules (R2)
 
@@ -49,11 +55,15 @@ up to that day's screen time from server events. A segment ends when:
 5. the playback goes idle for 6 minutes without events (the clock's sweep).
 
 A seek or a short pause keeps the segment. Two clients playing at once make two segments, each with its own device and
-app. Live TV keeps the channel id and name. *Plays* count playbacks, not segments.
+app. Live TV keeps the channel id and name. A client that reports the programme instead of the channel gives
+the channel id only (the event handler cannot look the channel up); its name is read from the channel when statistics
+are read, and a channel that no longer exists shows the programme's name. *Plays* count playbacks, not segments.
 
-A break is noted when the counted time reaches the kid's sitting limit (start = when it was reached, minutes = the
-household break), and updated when a grown-up ends it early with End break or Reset (minutes = how long it lasted,
-`ended_by_grownup`). Breaks are only noted while `AdvancedStats` is on. Enforcement rules are unchanged.
+A break event means "the sitting limit was reached": it is noted when the counted time reaches the kid's sitting limit
+(start = when it was reached, minutes = the household break), and updated when a grown-up ends it early with End break
+or Reset (minutes = how long it lasted, `ended_by_grownup`). It is noted with server enforcement on or off: with it
+off, the break is what the kids app was asked to apply, and a client that does not cut playback may have kept
+playing. Breaks are only noted while `AdvancedStats` is on. Enforcement rules are unchanged.
 
 ## Requirements
 
@@ -63,7 +73,10 @@ household break), and updated when a grown-up ends it early with End break or Re
   user and the orphan sweep cover them.
 - **FR-003** The watch log is fed from the same playback events as the allowance, with no I/O in the event handlers:
   segments and breaks wait in memory and are written with the usage flush (30 s, and after a stop); a growing segment
-  is upserted by its id. Rows of users who are no longer kids are dropped.
+  is upserted by its id. Rows of users who are no longer kids are dropped. While the database is known to be
+  unusable nothing is recorded; while writes keep failing, at most 10 000 ended segments and 10 000 breaks wait in
+  memory, the oldest dropped first, with one warning in the log. A failure in the watch log never stops the screen
+  time count or enforcement.
 - **FR-004** `GET /Kids/Users/{userId}/Stats?days=N` as in the contract: admin or parent grant holder, 403 otherwise
   (the kid's own token included), 400 for N outside 1–90, 404 if not a kid.
 - **FR-005** `GET /Kids/Users/{userId}/Stats/Detail?days=N` (1–365, default 14) for the dashboard: days with the time
@@ -85,7 +98,8 @@ household break), and updated when a grown-up ends it early with End break or Re
 | `break_event` | `user_id`, `day`, `started_at`, `minutes`, `ended_by_grownup` | PK (user_id, started_at) |
 
 A plugin older than this one refuses a schema-6 database (kids data unavailable), so a downgrade needs the backup of
-`kids.db` taken before upgrading.
+`kids.db` (with `-wal` and `-shm`, or taken with Jellyfin stopped) made before upgrading, and loses what was counted or
+changed since; `docs/install.md` (Update) says so.
 
 ## Constitution check
 

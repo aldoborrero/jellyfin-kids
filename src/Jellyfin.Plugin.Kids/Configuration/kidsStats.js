@@ -60,6 +60,7 @@ const texts = {
         app: 'App',
         others: 'Others',
         notInLog: 'Not in the log',
+        watchedCounted: '{0}: watched {1}, counted {2}',
         limit: 'Daily allowance',
         live: 'live',
         today: 'today',
@@ -128,6 +129,7 @@ const texts = {
         app: 'App',
         others: 'Otros',
         notInLog: 'Fuera del registro',
+        watchedCounted: '{0}: visto {1}, contado {2}',
         limit: 'Tiempo al día',
         live: 'en directo',
         today: 'hoy',
@@ -279,7 +281,7 @@ const retentionChoices = [30, 90, 180, 365];
 const rangeChoices = [7, 14, 30, 90, 180, 365];
 
 // Page state
-const state = { kids: [], retention: 90, advanced: false, tab: 'day', stats: null, open: new Set() };
+const state = { ticket: 0, kids: [], retention: 90, advanced: false, tab: 'day', stats: null, open: new Set() };
 
 function showError(view, message) {
     setText(view.querySelector('.kidsError'), message);
@@ -351,7 +353,8 @@ function renderDays(view, stats) {
     const bottom = 26;
     const top = 10;
     const plotHeight = height - bottom - top;
-    const maxMinutes = Math.max(30, ...stats.Days.map((d) => d.UsedSeconds / 60),
+    // A reset day keeps its watch log (spec D6), so a bar may show more watched than counted: scale to the higher one
+    const maxMinutes = Math.max(30, ...stats.Days.map((d) => Math.max(d.UsedSeconds, d.Series.reduce((sum, part) => sum + part.Seconds, 0)) / 60),
         ...stats.Days.map((d) => (d.AllowanceMinutes === null || d.AllowanceMinutes === undefined ? 0 : d.AllowanceMinutes + d.BonusMinutes)));
     const step = maxMinutes > 240 ? 120 : maxMinutes > 120 ? 60 : 30;
     const scaleMax = Math.ceil(maxMinutes / step) * step;
@@ -370,7 +373,11 @@ function renderDays(view, stats) {
     stats.Days.forEach((day, i) => {
         const x = left + (i * slot) + ((slot - barWidth) / 2);
         const group = svg('g');
-        group.append(svg('title', {}, dayLabel(day.Day, { weekday: 'short', day: 'numeric', month: 'short' }) + ': ' + duration(day.UsedSeconds)));
+        const logged = day.Series.reduce((sum, part) => sum + part.Seconds, 0);
+        const label = dayLabel(day.Day, { weekday: 'short', day: 'numeric', month: 'short' });
+        group.append(svg('title', {}, logged - day.UsedSeconds > 30
+            ? t('watchedCounted', label, duration(logged), duration(day.UsedSeconds))
+            : label + ': ' + duration(day.UsedSeconds)));
         let base = 0;
         const parts = [];
         let others = 0;
@@ -387,7 +394,6 @@ function renderDays(view, stats) {
             parts.push({ seconds: others, colour: othersColour });
         }
 
-        const logged = day.Series.reduce((sum, part) => sum + part.Seconds, 0);
         const outside = day.UsedSeconds - logged;
         if (outside > 30) {
             usedOutside = usedOutside || hasLog;
@@ -611,11 +617,21 @@ function loadStats(view) {
     }
 
     const days = view.querySelector('.kidsStatsRange').value;
+    // Only the latest request draws: a slow answer for the previous kid or period must not replace a newer one
+    const ticket = ++state.ticket;
     Dashboard.showLoadingMsg();
     showError(view, null);
     return request('GET', 'Kids/Users/' + kid + '/Stats/Detail?days=' + encodeURIComponent(days))
-        .then((stats) => renderStats(view, stats))
-        .catch(() => showError(view, t('loadFailed')))
+        .then((stats) => {
+            if (ticket === state.ticket) {
+                renderStats(view, stats);
+            }
+        })
+        .catch(() => {
+            if (ticket === state.ticket) {
+                showError(view, t('loadFailed'));
+            }
+        })
         .finally(() => Dashboard.hideLoadingMsg());
 }
 
