@@ -196,4 +196,21 @@ public sealed class StatsServiceTests : IDisposable
 
         Assert.Equal(1, (await _f.Service.GetAsync(kid, 1, TestContext.Current.CancellationToken))!.Days[0].UsedMinutes);
     }
+
+    [Fact]
+    public async Task LiveProgramme_IsNamedAfterItsChannel()
+    {
+        var kid = await _f.MarkAsync(null);
+        _f.Settings.AdvancedStats = true;
+        var clan = _f.Channels.Add("Clan");
+        var gone = Guid.NewGuid();
+        _f.Play(kid, new WatchItem(Guid.NewGuid(), "LiveTvProgram", "Peppa Pig", ChannelId: clan.Id), DaysAgo(0, 10), 600, play: "a");
+        _f.Play(kid, new WatchItem(Guid.NewGuid(), "LiveTvProgram", "Old show", ChannelId: gone), DaysAgo(0, 11), 300, play: "b");
+
+        var stats = (await _f.Service.GetAsync(kid, 1, TestContext.Current.CancellationToken))!;
+
+        Assert.Equal([new SeriesStats(clan.Id, "Clan", 10, 1, true), new SeriesStats(gone, "Old show", 5, 1, true)], stats.TopSeries);
+        var detail = (await _f.Service.GetDetailAsync(kid, 1, TestContext.Current.CancellationToken))!;
+        Assert.Equal(["Clan", "Old show"], detail.Series.Select(s => s.Name));
+    }
 }

@@ -25,6 +25,7 @@ public sealed class StatsService
     private readonly UsageService _usage;
     private readonly WatchLog _watch;
     private readonly KidProfileService _profiles;
+    private readonly ILiveTvChannelCatalog _channels;
     private readonly IKidsSettings _settings;
     private readonly TimeProvider _time;
 
@@ -35,10 +36,12 @@ public sealed class StatsService
     /// <param name="usage">The screen-time service, flushed first so today is up to date.</param>
     /// <param name="watch">The watch log, flushed first for the same reason.</param>
     /// <param name="profiles">The kid profiles, for who is a kid and today's allowance.</param>
+    /// <param name="channels">The live TV channels, for the name of a channel a programme was reported for.</param>
     /// <param name="settings">The household settings.</param>
     /// <param name="time">The clock.</param>
-    public StatsService(StatsStore store, UsageService usage, WatchLog watch, KidProfileService profiles, IKidsSettings settings, TimeProvider time)
+    public StatsService(StatsStore store, UsageService usage, WatchLog watch, KidProfileService profiles, ILiveTvChannelCatalog channels, IKidsSettings settings, TimeProvider time)
     {
+        _channels = channels;
         _store = store;
         _usage = usage;
         _watch = watch;
@@ -73,7 +76,7 @@ public sealed class StatsService
         IReadOnlyList<BreakDay> breaks = [];
         if (advanced)
         {
-            var segments = await _store.ReadSegmentsAsync(userId, DayClock.Format(from), DayClock.Format(today), cancellationToken).ConfigureAwait(false);
+            var segments = await ReadSegmentsAsync(userId, DayClock.Format(from), DayClock.Format(today), cancellationToken).ConfigureAwait(false);
             top = StatsCalculator.TopSeries(segments);
             breaks = StatsCalculator.Breaks(await _store.ReadBreaksAsync(userId, DayClock.Format(from), DayClock.Format(today), cancellationToken).ConfigureAwait(false));
         }
@@ -102,7 +105,7 @@ public sealed class StatsService
         var (today, from, allowance, stored, advanced) = range.Value;
         var fromKey = DayClock.Format(from);
         var toKey = DayClock.Format(today);
-        var segments = await _store.ReadSegmentsAsync(userId, fromKey, toKey, cancellationToken).ConfigureAwait(false);
+        var segments = await ReadSegmentsAsync(userId, fromKey, toKey, cancellationToken).ConfigureAwait(false);
         var breaks = await _store.ReadBreaksAsync(userId, fromKey, toKey, cancellationToken).ConfigureAwait(false);
         var perDay = StatsCalculator.PerDay(segments);
         var list = Days(from, today, stored, allowance)
@@ -156,5 +159,25 @@ public sealed class StatsService
         var from = today.AddDays(1 - days);
         var stored = await _store.ReadDaysAsync(userId, DayClock.Format(from), DayClock.Format(today), cancellationToken).ConfigureAwait(false);
         return (today, from, profile.Settings.DailyAllowanceMinutes, stored, _settings.AdvancedStats);
+    }
+
+    // A client may report the live programme instead of the channel: the event handler cannot look the channel up
+    // (no I/O there), so its name is filled in here. A channel that no longer exists keeps the programme's name.
+    private async Task<IReadOnlyList<WatchSegment>> ReadSegmentsAsync(Guid userId, string fromDay, string toDay, CancellationToken cancellationToken)
+    {
+        var segments = await _store.ReadSegmentsAsync(userId, fromDay, toDay, cancellationToken).ConfigureAwait(false);
+        var unnamed = segments
+            .Where(s => s.Item.ChannelId is not null && s.Item.ChannelName is null)
+            .Select(s => s.Item.ChannelId!.Value)
+            .ToHashSet();
+        if (unnamed.Count == 0)
+        {
+            return segments;
+        }
+
+        var names = _channels.Resolve(unnamed).ToDictionary(c => c.Id, c => c.Name);
+        return [.. segments.Select(s => s.Item.ChannelId is { } id && s.Item.ChannelName is null && names.TryGetValue(id, out var name)
+            ? s with { Item = s.Item with { ChannelName = name } }
+            : s)];
     }
 }

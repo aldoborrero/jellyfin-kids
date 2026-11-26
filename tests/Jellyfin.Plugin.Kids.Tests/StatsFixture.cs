@@ -25,10 +25,10 @@ public sealed class StatsFixture : IDisposable
         Database = new KidsDatabase(_folder.Path, NullLogger<KidsDatabase>.Instance);
         UsageStore = new UsageStore(Database);
         Store = new StatsStore(Database);
-        Profiles = new KidProfileService(new KidProfileStore(Database), Users, new FakePickCatalog(), new FakeLiveTvChannelCatalog(), Roster);
+        Profiles = new KidProfileService(new KidProfileStore(Database), Users, new FakePickCatalog(), Channels, Roster);
         Usage = new UsageService(UsageStore, Profiles, Settings, Time, NullLogger<UsageService>.Instance);
         Watch = new WatchLog(Store, Roster, Settings, NullLogger<WatchLog>.Instance);
-        Service = new StatsService(Store, Usage, Watch, Profiles, Settings, Time);
+        Service = new StatsService(Store, Usage, Watch, Profiles, Channels, Settings, Time);
 
         // 2026-11-19 18:00 UTC, days from midnight UTC
         Time.Now = new DateTimeOffset(2026, 11, 19, 18, 0, 0, TimeSpan.Zero);
@@ -39,6 +39,8 @@ public sealed class StatsFixture : IDisposable
     public FakeKidsSettings Settings { get; } = new();
 
     public FakeUserDirectory Users { get; } = new();
+
+    public FakeLiveTvChannelCatalog Channels { get; } = new();
 
     public KidRoster Roster { get; } = new();
 
