@@ -1271,7 +1271,7 @@ log_file=$(ls -t "$dev"/log/log_*.log | head -1)
 # fa. Info reports API 1.2 and both capabilities
 req - GET /Kids/Info
 check "fa Info is API 1.2 with bonusUndo and breakEnd" 200 \
-  '.ApiVersion == 1 and .ApiMinorVersion == 2 and (.Features | index("bonusUndo")) != null
+  '.ApiVersion == 1 and .ApiMinorVersion >= 2 and (.Features | index("bonusUndo")) != null
    and (.Features | index("breakEnd")) != null'
 
 # fb. A bonus answers its id and until when it can be undone
@@ -1379,6 +1379,18 @@ check "fk End break for a user who is not a kid is not found" 404
 set_alice '{}'
 req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
 check "fk alice is left with today cleared" 200 '.UsedSeconds == 0 and .BonusSeconds == 0'
+
+# Autoplay without a limit (feature 21, specs/021-unlimited-autoplay)
+req - GET /Kids/Info
+check "ha Info lists unlimitedAutoplay" 200 '(.Features | index("unlimitedAutoplay")) != null'
+set_alice '{"AutoplayEnabled": true, "AutoplayCap": 0}'
+check "ha an autoplay limit of 0 (no limit) is accepted" 200 '.AutoplayEnabled == true and .AutoplayCap == 0'
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "ha alice reads it back as 0" 200 '.AutoplayCap == 0'
+set_alice '{"AutoplayCap": -1}'
+check "ha an autoplay limit of -1 is rejected" 400 "$errors | has(\"AutoplayCap\")"
+set_alice '{}'
+check "ha a PUT without it goes back to 3" 200 '.AutoplayCap == 3'
 
 # The kids data folder (feature 14, quickstart.md §2 ga–ge). The dev server runs with --datadir $dev/data, so its
 # DataPath is $dev/data/data.

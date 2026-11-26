@@ -409,6 +409,7 @@ export default function (view, params) {
     const editor = view.querySelector('.kidsEditor');
     const capInput = view.querySelector('.kidsAutoplayCap');
     const autoplayInput = view.querySelector('.kidsAutoplayEnabled');
+    const noCapInput = view.querySelector('.kidsNoAutoplayCap');
     const searchInput = view.querySelector('.kidsPickSearch');
     const results = view.querySelector('.kidsPickResults');
     const avatarSelect = view.querySelector('.kidsAvatar');
@@ -723,7 +724,16 @@ export default function (view, params) {
         }
     }
 
+    // The autoplay limit: 1–10 episodes in a row, or 0 when "No limit" is ticked
+    function capValue() {
+        return noCapInput.checked ? 0 : Number(capInput.value);
+    }
+
     function capIsValid() {
+        if (noCapInput.checked) {
+            return true;
+        }
+
         const value = Number(capInput.value);
         return Number.isInteger(value) && value >= 1 && value <= 10;
     }
@@ -803,7 +813,7 @@ export default function (view, params) {
         return {
             SearchAllowed: view.querySelector('.kidsSearchAllowed').checked,
             AutoplayEnabled: autoplayInput.checked,
-            AutoplayCap: Number(capInput.value),
+            AutoplayCap: capValue(),
             Sections: sections.map((entry) => ({ Section: entry.Section, Visible: entry.Visible })),
             PickedItemIds: picks.map((pick) => pick.Id),
             // Always sent: the update is a full replacement, and omitting them would clear them
@@ -849,7 +859,8 @@ export default function (view, params) {
     }
 
     function renderCap() {
-        capInput.disabled = !autoplayInput.checked;
+        noCapInput.disabled = !autoplayInput.checked;
+        capInput.disabled = !autoplayInput.checked || noCapInput.checked;
         view.querySelector('.kidsError[data-error-for="AutoplayCap"]').textContent =
             autoplayInput.checked && !capIsValid() ? 'Choose a number from 1 to 10.' : '';
     }
@@ -1037,7 +1048,9 @@ export default function (view, params) {
         revision = profile.Revision;
         view.querySelector('.kidsSearchAllowed').checked = profile.SearchAllowed;
         autoplayInput.checked = profile.AutoplayEnabled;
-        capInput.value = profile.AutoplayCap;
+        // 0 is no limit; the field keeps the default 3 so unticking "No limit" starts from a valid number
+        noCapInput.checked = profile.AutoplayCap === 0;
+        capInput.value = profile.AutoplayCap === 0 ? 3 : profile.AutoplayCap;
         allowance.load(profile.DailyAllowanceMinutes);
         sessionLimit.load(profile.SessionLimitMinutes);
         loadAvatar(profile.Avatar);
@@ -1366,6 +1379,12 @@ export default function (view, params) {
     resetButton.addEventListener('click', resetToday);
     endBreakButton.addEventListener('click', endBreak);
     autoplayInput.addEventListener('change', renderCap);
+    noCapInput.addEventListener('change', () => {
+        renderCap();
+        if (!noCapInput.checked) {
+            capInput.focus();
+        }
+    });
     avatarSelect.addEventListener('change', renderAvatar);
     capInput.addEventListener('input', renderCap);
     searchInput.addEventListener('input', () => {

@@ -8,7 +8,10 @@ namespace Jellyfin.Plugin.Kids.Profiles;
 /// </summary>
 public sealed record KidProfileSettings
 {
-    /// <summary>The lowest autoplay limit.</summary>
+    /// <summary>The autoplay limit that means no limit: the next episode always plays on its own.</summary>
+    public const int UnlimitedAutoplayCap = 0;
+
+    /// <summary>The lowest autoplay limit other than <see cref="UnlimitedAutoplayCap"/>.</summary>
     public const int MinAutoplayCap = 1;
 
     /// <summary>The highest autoplay limit.</summary>
@@ -46,7 +49,7 @@ public sealed record KidProfileSettings
     public bool AutoplayEnabled { get; init; }
 
     /// <summary>
-    /// Gets how many episodes autoplay may play in a row, 1–10 inclusive.
+    /// Gets how many episodes autoplay may play in a row, 1–10 inclusive, or <see cref="UnlimitedAutoplayCap"/> (0) for no limit.
     /// </summary>
     public int AutoplayCap { get; init; } = DefaultAutoplayCap;
 

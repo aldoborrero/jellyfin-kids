@@ -26,7 +26,7 @@ public class KidProfileValidatorTests
     }
 
     [Theory]
-    [InlineData(0)]
+    [InlineData(-1)]
     [InlineData(11)]
     [InlineData(-3)]
     public void AutoplayCap_OutOfRange_IsRejected(int cap)
@@ -34,12 +34,14 @@ public class KidProfileValidatorTests
         var result = KidProfileValidator.Validate(new KidProfileInput { AutoplayCap = cap }, null, _catalog, _channels);
 
         Assert.Contains("AutoplayCap", result.Errors.Keys);
+        Assert.Equal(["Must be 0 (no limit) or between 1 and 10."], result.Errors["AutoplayCap"]);
     }
 
     [Theory]
+    [InlineData(0)]
     [InlineData(1)]
     [InlineData(10)]
-    public void AutoplayCap_AtBounds_IsAccepted(int cap)
+    public void AutoplayCap_UnlimitedOrAtBounds_IsAccepted(int cap)
     {
         var result = KidProfileValidator.Validate(new KidProfileInput { AutoplayCap = cap }, null, _catalog, _channels);
 

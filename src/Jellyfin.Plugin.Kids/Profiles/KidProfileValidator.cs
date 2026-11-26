@@ -23,9 +23,9 @@ public static class KidProfileValidator
         var errors = new Dictionary<string, string[]>();
 
         var cap = input.AutoplayCap ?? KidProfileSettings.DefaultAutoplayCap;
-        if (cap is < KidProfileSettings.MinAutoplayCap or > KidProfileSettings.MaxAutoplayCap)
+        if (cap is not KidProfileSettings.UnlimitedAutoplayCap and (< KidProfileSettings.MinAutoplayCap or > KidProfileSettings.MaxAutoplayCap))
         {
-            errors["AutoplayCap"] = [string.Create(CultureInfo.InvariantCulture, $"Must be between {KidProfileSettings.MinAutoplayCap} and {KidProfileSettings.MaxAutoplayCap}.")];
+            errors["AutoplayCap"] = [string.Create(CultureInfo.InvariantCulture, $"Must be {KidProfileSettings.UnlimitedAutoplayCap} (no limit) or between {KidProfileSettings.MinAutoplayCap} and {KidProfileSettings.MaxAutoplayCap}.")];
         }
 
         var allowance = input.DailyAllowanceMinutes;
