@@ -342,7 +342,24 @@ public sealed class UsageStore
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>How many rows were deleted.</returns>
     public Task<int> PruneAsync(string cutoffDay, CancellationToken cancellationToken = default)
-        => DeleteAsync("day < $value", cutoffDay, cancellationToken);
+        => PruneAsync(cutoffDay, cutoffDay, cancellationToken);
+
+    /// <summary>
+    /// Deletes the rows of every day before a cutoff, with a separate cutoff for the ids of offline reports.
+    /// </summary>
+    /// <param name="cutoffDay">The first day to keep, <c>yyyy-MM-dd</c>.</param>
+    /// <param name="reportedSegmentCutoffDay">The first day whose offline report ids are kept, <c>yyyy-MM-dd</c>.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>How many rows were deleted.</returns>
+    public Task<int> PruneAsync(string cutoffDay, string reportedSegmentCutoffDay, CancellationToken cancellationToken = default)
+    {
+        EnsureUsable();
+        return _database.WriteAsync(
+            async (connection, transaction) =>
+                await DeleteRowsAsync(connection, transaction, "day < $value", cutoffDay, cancellationToken, _tables.Where(t => t != "reported_segment")).ConfigureAwait(false)
+                + await DeleteRowsAsync(connection, transaction, "day < $value", reportedSegmentCutoffDay, cancellationToken, ["reported_segment"]).ConfigureAwait(false),
+            cancellationToken);
+    }
 
     /// <summary>
     /// Deletes the rows of every user outside a set (users deleted while the plugin was not running).
@@ -383,10 +400,10 @@ public sealed class UsageStore
     }
 
     [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities", Justification = "Table names and conditions are constants; values are parameters")]
-    private static async Task<int> DeleteRowsAsync(SqliteConnection connection, SqliteTransaction transaction, string condition, string value, CancellationToken cancellationToken)
+    private static async Task<int> DeleteRowsAsync(SqliteConnection connection, SqliteTransaction transaction, string condition, string value, CancellationToken cancellationToken, IEnumerable<string>? tables = null)
     {
         var removed = 0;
-        foreach (var table in _tables)
+        foreach (var table in tables ?? _tables)
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;

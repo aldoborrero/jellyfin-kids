@@ -219,14 +219,21 @@ public sealed class UsageService : IDisposable
     /// <summary>
     /// Deletes screen time and the watch log older than the retention setting (<see cref="IKidsSettings.RetentionDays"/>,
     /// 90 days by default): rows of days before today minus the retention period. Today minus exactly the retention
-    /// period is kept, and so is today whatever the setting, since the daily allowance needs it.
+    /// period is kept, and so is today whatever the setting, since the daily allowance needs it. The ids of offline
+    /// reports are kept for at least <see cref="SegmentValidator.MaxAgeDays"/>, so a resent report is never counted twice.
     /// </summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>How many rows were deleted.</returns>
     public Task<int> PruneAsync(CancellationToken cancellationToken = default)
     {
         var today = CurrentDayClock().DayOf(_time.GetUtcNow());
-        return _store.PruneAsync(DayClock.Format(today.AddDays(-Math.Max(1, _settings.RetentionDays))), cancellationToken);
+        var retention = Math.Max(1, _settings.RetentionDays);
+
+        // Offline report ids stay as long as a report may still arrive, or a resent one would count again
+        return _store.PruneAsync(
+            DayClock.Format(today.AddDays(-retention)),
+            DayClock.Format(today.AddDays(-Math.Max(retention, SegmentValidator.MaxAgeDays))),
+            cancellationToken);
     }
 
     /// <summary>
