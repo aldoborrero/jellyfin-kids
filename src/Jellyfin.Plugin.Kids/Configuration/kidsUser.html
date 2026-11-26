@@ -206,6 +206,14 @@
                                         </label>
                                     </div>
 
+                                    <div class="checkboxContainer checkboxContainer-withDescription">
+                                        <label>
+                                            <input is="emby-checkbox" type="checkbox" class="kidsNoAutoplayCap" />
+                                            <span>No limit: always play the next episode</span>
+                                        </label>
+                                        <div class="fieldDescription checkboxFieldDescription">Needs a kids app that supports it, such as a recent Peke for Jellyfin. Older versions play one episode and then stop.</div>
+                                    </div>
+
                                     <div class="inputContainer">
                                         <input is="emby-input" type="number" id="kidsAutoplayCap" class="kidsAutoplayCap" label="Episodes in a row (1–10)" min="1" max="10" step="1" />
                                         <div class="fieldDescription kidsError" data-error-for="AutoplayCap"></div>

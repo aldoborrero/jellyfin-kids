@@ -64,7 +64,8 @@ and for installing a release by hand.
 | **Day start** | Choose the hour the day resets, with daylight saving handled. |
 | **Offline playback** | Clients can report downloads watched offline. Reports can only add time, never remove it. |
 | **Dashboard pages** | You manage all of this from Jellyfin's own dashboard. The list of kids shows what still leaves each one unprotected in Jellyfin: an administrator account, every library, no maximum rating, unrated movies and shows, live TV access, picked channels that Jellyfin's parental control hides, or downloads. You fix each of these on the kid's own page, which edits the libraries, maximum rating, unrated items, allowed hours, live TV access and downloads next to the kids settings. A banner says when limits only apply in the kids app. |
-| **Cleanup** | A deleted user's kid profile and usage go with them, and usage older than 90 days is pruned daily. |
+| **Statistics** | A "Kids statistics" dashboard page shows each kid's minutes per day against their allowance. With "Advanced statistics" on (off by default) the plugin also keeps a watch log, so the page shows what each kid watched by series and episode, at what hours and on which device, and clients get the week's most watched. Everything stays on your server. |
+| **Cleanup** | A deleted user's kid profile, usage and watch log go with them, and data older than the days you choose (30 to 365, 90 by default) is pruned daily. |
 
 ## Screenshots
 
@@ -125,6 +126,8 @@ major version changes only on breaking changes, the minor one on additions). The
 - [Reset today](specs/007-kids-dashboard-ux/contracts/kids-api-v1-reset.md)
 - [Avatars, API 1.1 and channel ratings](specs/012-kids-avatar/contracts/kids-api-v1-avatar.md)
 - [Bonus undo and End break, API 1.2](specs/013-bonus-undo-break/contracts/kids-api-v1-bonus-undo-break.md)
+- [Autoplay without a limit, API 1.3](specs/021-unlimited-autoplay/contracts/kids-api-v1-unlimited-autoplay.md)
+- [Statistics, API 1.4](specs/022-kids-stats/contracts/kids-api-v1-stats.md)
 
 The design and the reasoning behind it are in [docs/plan.md](docs/plan.md).
 

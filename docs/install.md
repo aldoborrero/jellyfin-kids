@@ -29,6 +29,17 @@ for plugins with automatic updates enabled (the default). To update by hand, ope
 **Dashboard → Plugins**, pick the newer version under **Revision History** and select **Install**.
 Either way, restart Jellyfin to load the new version.
 
+Some versions upgrade the database (`kids.db`, see [Your data](#your-data)) on their first start, and say so in their
+notes; the version that adds kids statistics is one (schema 5 to 6, logged as `Kids database … migrated from schema
+version 5 to 6`). Before installing one of them:
+
+- **Back up `kids.db`** with Jellyfin stopped, copying `kids.db` together with its `kids.db-wal` and `kids.db-shm`
+  files if they are there, or with `sqlite3 … ".backup kids-backup.db"` while it runs. A copy of `kids.db` alone while
+  Jellyfin runs can miss the latest changes, which are still in `kids.db-wal`.
+- **Going back** to the previous version needs that backup: an older plugin refuses a database a newer one upgraded,
+  and kids data is unavailable (no kid profiles, no screen time, no parent lock) until you restore it. Restoring it
+  loses what changed since the upgrade: the screen time counted, bonuses, and profile and lock changes.
+
 ## Your data
 
 The plugin keeps kid profiles, the parent code (as a verifier only), screen time, bonuses, live TV channels and

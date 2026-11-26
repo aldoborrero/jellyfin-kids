@@ -68,4 +68,28 @@ public class PluginKidsSettingsTests
 
         Assert.Equal(TimeSpan.FromMinutes(expectedMinutes), settings.SittingBreak);
     }
+
+    [Fact]
+    public void NewConfiguration_AdvancedStatsOff_Kept90Days()
+    {
+        var settings = new PluginKidsSettings(() => new PluginConfiguration());
+
+        Assert.False(settings.AdvancedStats);
+        Assert.Equal(90, settings.RetentionDays);
+    }
+
+    [Theory]
+    [InlineData(30, 30)]
+    [InlineData(90, 90)]
+    [InlineData(180, 180)]
+    [InlineData(365, 365)]
+    [InlineData(0, 90)]
+    [InlineData(1, 90)]
+    [InlineData(60, 90)]
+    public void RetentionDays_OnlyTheOfferedChoices(int stored, int expected)
+    {
+        var settings = new PluginKidsSettings(() => new PluginConfiguration { StatsRetentionDays = stored });
+
+        Assert.Equal(expected, settings.RetentionDays);
+    }
 }

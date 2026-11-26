@@ -770,6 +770,9 @@ download_pid=$!
 play "$alice" kids-check-bg start kids-check-bg
 while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) - started < left + 60)); do
   sleep 5
+  # Once the download is cut, report no more, like a player that stopped: a report after the cut would show her
+  # playing again
+  kill -0 "$download_pid" 2>/dev/null || break
   play "$alice" kids-check-bg progress kids-check-bg >/dev/null
 done
 cut_after=$(($(date +%s) - started))
@@ -810,6 +813,8 @@ download_pid=$!
 play "$alice" kids-check-bh start kids-check-bh
 while kill -0 "$download_pid" 2>/dev/null && (($(date +%s) < end_epoch + 60)); do
   sleep 5
+  # Once the download is cut, report no more: a report after the cut would show her playing again
+  kill -0 "$download_pid" 2>/dev/null || break
   play "$alice" kids-check-bh progress kids-check-bh >/dev/null
 done
 cut_at=$(($(date +%s) - end_epoch))
@@ -1271,7 +1276,7 @@ log_file=$(ls -t "$dev"/log/log_*.log | head -1)
 # fa. Info reports API 1.2 and both capabilities
 req - GET /Kids/Info
 check "fa Info is API 1.2 with bonusUndo and breakEnd" 200 \
-  '.ApiVersion == 1 and .ApiMinorVersion == 2 and (.Features | index("bonusUndo")) != null
+  '.ApiVersion == 1 and .ApiMinorVersion >= 2 and (.Features | index("bonusUndo")) != null
    and (.Features | index("breakEnd")) != null'
 
 # fb. A bonus answers its id and until when it can be undone
@@ -1379,6 +1384,158 @@ check "fk End break for a user who is not a kid is not found" 404
 set_alice '{}'
 req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
 check "fk alice is left with today cleared" 200 '.UsedSeconds == 0 and .BonusSeconds == 0'
+
+# Autoplay without a limit (feature 21, specs/021-unlimited-autoplay)
+req - GET /Kids/Info
+check "ha Info lists unlimitedAutoplay" 200 '(.Features | index("unlimitedAutoplay")) != null'
+set_alice '{"AutoplayEnabled": true, "AutoplayCap": 0}'
+check "ha an autoplay limit of 0 (no limit) is accepted" 200 '.AutoplayEnabled == true and .AutoplayCap == 0'
+req "$alice" GET "/Kids/Users/$alice_id/Profile"
+check "ha alice reads it back as 0" 200 '.AutoplayCap == 0'
+set_alice '{"AutoplayCap": -1}'
+check "ha an autoplay limit of -1 is rejected" 400 "$errors | has(\"AutoplayCap\")"
+set_alice '{}'
+check "ha a PUT without it goes back to 3" 200 '.AutoplayCap == 3'
+
+# Statistics (feature 22, specs/022-kids-stats). Enforcement is off, as fk left it; alice has no allowance and today
+# cleared. The watch log starts empty and advanced statistics off, and both are left that way at the end
+stats() { req "$1" GET "/Kids/Users/$alice_id/Stats${2-}"; }
+today=$(date +%F)
+req - GET /Kids/Info
+check "ia Info lists stats, API 1.4" 200 '(.Features | index("stats")) != null and .ApiMinorVersion >= 4'
+req "$admin" DELETE /Kids/Admin/WatchLog
+check "ia admin empties the watch log" 204
+configure '.AdvancedStats = false | .StatsRetentionDays = 90'
+set_alice "{\"DailyAllowanceMinutes\": 60, \"LiveTvChannelIds\": [\"$peke\"]}"
+check "ia alice gets 60 minutes a day and PekeTV" 200
+
+# ib. Off: 60 s of the clip count as screen time, but nothing goes in the watch log
+ps=ib-$(new_id)
+play "$alice" kids-check-stats start "$ps"
+play_for "$alice" kids-check-stats "$ps" 60
+play "$alice" kids-check-stats stop "$ps"
+sleep 2
+stats "$admin" '?days=7'
+check "ib Stats (off) has 7 days, today last, with the allowance, and nothing else" 200 \
+  "(keys == [\"AdvancedStats\",\"Breaks\",\"Days\",\"RetentionDays\",\"Today\",\"TopSeries\",\"UserId\"])
+   and .AdvancedStats == false and .RetentionDays == 90 and .Today == \"$today\" and (.UserId | gsub(\"-\"; \"\")) == \"$alice_id\"
+   and (.Days | length) == 7 and .Days[-1].Day == \"$today\" and .Days[-1].UsedMinutes >= 1
+   and .Days[-1].AllowanceMinutes == 60 and (.Days | map(.Day) | . == sort)
+   and all(.Days[]; keys == [\"AllowanceMinutes\",\"BonusMinutes\",\"Day\",\"UsedMinutes\"])
+   and .TopSeries == [] and .Breaks == []"
+req "$admin" GET /Kids/Admin/WatchLog
+check "ib the watch log stays empty while off" 200 '.AdvancedStats == false and .Segments == 0'
+
+# ic. On: the clip and PekeTV each go in the watch log, as top series, with their minutes and plays
+configure '.AdvancedStats = true'
+ps=ic-$(new_id)
+play "$alice" kids-check-stats start "$ps"
+play_for "$alice" kids-check-stats "$ps" 90
+play "$alice" kids-check-stats stop "$ps"
+live_info "$alice" kids-check-stats-tv "$peke"
+check "ic alice opens PekeTV" 200 '(.MediaSources[0].LiveStreamId | length) > 0'
+stats_live=$(jq -r '.MediaSources[0].LiveStreamId // empty' <<<"$body")
+play_live() {
+  local path
+  case $1 in start) path=/Sessions/Playing ;; progress) path=/Sessions/Playing/Progress ;; stop) path=/Sessions/Playing/Stopped ;; esac
+  req_dev "$alice" kids-check-stats-tv POST "$path" "$(jq -nc --arg i "$peke" --arg l "$stats_live" \
+    '{ItemId: $i, PlaySessionId: "kids-check-stats-tv", LiveStreamId: $l, IsPaused: false, CanSeek: false, PlayMethod: "Transcode"}')"
+  [[ $status == 204 ]] || echo "  (live playback $1 answered $status ${body:0:200})"
+}
+play_live start
+for ((i = 0; i < 9; i++)); do
+  sleep 10
+  play_live progress
+done
+play_live stop
+[[ -n $stats_live ]] && req "$admin" POST "/LiveStreams/Close?liveStreamId=$(jq -rn --arg l "$stats_live" '$l | @uri')"
+sleep 3
+stats "$admin" '?days=7'
+check "ic Stats (on) has the clip and PekeTV as top series" 200 \
+  "def nid: ascii_downcase | gsub(\"-\"; \"\");
+   .AdvancedStats == true and (.TopSeries | length) == 2
+   and all(.TopSeries[]; keys == [\"IsLiveTv\",\"Minutes\",\"Name\",\"Plays\",\"SeriesId\"])
+   and any(.TopSeries[]; (.SeriesId | nid) == \"$clip_id\" and .IsLiveTv == false and .Minutes >= 1 and .Plays == 1)
+   and any(.TopSeries[]; (.SeriesId | nid) == \"$peke\" and .Name == \"PekeTV\" and .IsLiveTv == true and .Minutes >= 1
+     and .Plays == 1)
+   and .Days[-1].UsedMinutes >= 3"
+echo "  Stats: $(jq -c . <<<"$body")"
+req "$admin" GET /Kids/Admin/WatchLog
+check "ic the watch log has the two segments" 200 '.AdvancedStats == true and .Segments == 2'
+req "$admin" GET "/Kids/Users/$alice_id/Stats/Detail?days=7"
+check "ic the dashboard's detail answers" 200
+
+# id. Who may read it: admin and a parent grant on alice's TV; not alice herself, nor bob
+verify "$alice_a" kids-check-A "$known"
+stats_grant=$(jq -r .Grant <<<"$body")
+req_dev "$alice_a" kids-check-A GET "/Kids/Users/$alice_id/Stats" '' "$stats_grant"
+check "id a grant holder on alice's TV reads her Stats (7 days by default)" 200 '(.Days | length) == 7'
+req "$alice" GET "/Kids/Users/$alice_id/Stats"
+check "id alice without a grant cannot" 403
+req_dev "$bob_t" kids-check-bob GET "/Kids/Users/$alice_id/Stats"
+check "id bob cannot read alice's Stats" 403
+req_dev "$alice_a" kids-check-A DELETE /Kids/Admin/WatchLog '' "$stats_grant"
+check "id a grant holder cannot delete the watch log" 403
+stats "$admin" '?days=91'
+check "id days=91 is rejected" 400 "$errors | has(\"Days\")"
+req "$admin" GET /Kids/Users/00000000000000000000000000000001/Stats
+check "id a user who is not a kid is not found" 404
+
+# ie. A break at the sitting limit is counted in Breaks (slow: DEV_CHECK_SLOW=1)
+if [[ -n ${DEV_CHECK_SLOW-} ]]; then
+  configure '.EnforcementEnabled = true | .SittingBreakMinutes = 1'
+  set_alice "{\"DailyAllowanceMinutes\": 60, \"SessionLimitMinutes\": 5}"
+  ps=ie-$(new_id)
+  play "$alice" kids-check-stats start "$ps"
+  play_for "$alice" kids-check-stats "$ps" 310
+  play "$alice" kids-check-stats stop "$ps"
+  req "$alice" GET "/Kids/Users/$alice_id/Status"
+  check "ie after 5 minutes alice is on a break" 200 '.DeniedReason == "sessionLimit"'
+  req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Break/End"
+  check "ie admin ends the break" 200 '(has("DeniedReason") | not)'
+  configure '.EnforcementEnabled = false | .SittingBreakMinutes = 15'
+  sleep 3
+  stats "$admin" '?days=7'
+  check "ie Stats has today's break" 200 ".Breaks == [{Day: \"$today\", Count: 1, Minutes: .Breaks[0].Minutes}] and .Breaks[0].Minutes >= 0"
+  echo "  Breaks: $(jq -c .Breaks <<<"$body")"
+else
+  echo "SKIP ie a break in Stats (set DEV_CHECK_SLOW=1)"
+fi
+
+# if. Off again: recording stops, what was kept stays (and Stats leaves it out); deleting empties it
+configure '.AdvancedStats = false'
+stats "$admin" '?days=1'
+check "if off again, Stats has no top series" 200 '.AdvancedStats == false and .TopSeries == [] and (.Days | length) == 1'
+req "$admin" GET /Kids/Admin/WatchLog
+check "if the kept watch log is still there" 200 '.Segments >= 2'
+req "$alice" DELETE /Kids/Admin/WatchLog
+check "if alice cannot delete the watch log" 403
+req "$admin" DELETE /Kids/Admin/WatchLog
+check "if admin deletes the watch log" 204
+req "$admin" GET /Kids/Admin/WatchLog
+check "if it is empty" 200 '.Segments == 0 and .Breaks == 0'
+
+# ig. The statistics pages are served anonymously and hold no household data
+for page in KidsStats KidsStatsJs; do
+  req - GET "/web/ConfigurationPage?name=$page"
+  check "ig page $page is served" 200
+  if grep -Eiq '[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|alice|bob|"admin"|UsedMinutes":' <<<"$body"; then
+    echo "FAIL ig page $page contains household data"
+    failures=$((failures + 1))
+  fi
+done
+
+# ih. When this dev state was upgraded from an older schema, the migration was logged (quickstart: build main first)
+if grep -qhE 'Kids database .* migrated from schema version [0-5] to 6' "$dev"/log/log_*.log 2>/dev/null; then
+  echo "PASS ih the migration to schema 6 was logged"
+else
+  echo "SKIP ih this dev state was not upgraded from an older schema"
+fi
+
+# Leave alice with no allowance, no channels and today's screen time cleared
+set_alice '{}'
+req "$admin" POST "/Kids/Users/$alice_id/WatchTime/Reset"
+check "ih alice is left with today cleared" 200 '.UsedSeconds == 0'
 
 # The kids data folder (feature 14, quickstart.md §2 ga–ge). The dev server runs with --datadir $dev/data, so its
 # DataPath is $dev/data/data.

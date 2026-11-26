@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Kids statistics</title>
+</head>
+<body>
+    <!-- Served without authentication: static markup only, everything is loaded by kidsStats.js. Texts marked
+         data-i18n are replaced with the viewer's language (English or Spanish). -->
+    <div id="KidsStatsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-controller="__plugin/KidsStatsJs">
+        <!-- Layout only: colours come from Jellyfin's theme variables, so every theme works; the series colours are
+             fixed and told apart by lightness too -->
+        <style>
+            #KidsStatsPage .kidsFilters { display: flex; flex-wrap: wrap; gap: 0 1.5em; }
+            #KidsStatsPage .kidsFilters .selectContainer { flex: 1 1 14em; margin-bottom: 1.2em; }
+            #KidsStatsPage .kidsError { color: var(--jf-palette-error-main, #cb272a); }
+            #KidsStatsPage .kidsSummary { display: flex; flex-wrap: wrap; gap: 0.5em 2.5em; margin: 0 0 1.5em; }
+            #KidsStatsPage .kidsSummary div { min-width: 8em; }
+            #KidsStatsPage .kidsSummary b { display: block; font-size: 1.6em; font-weight: 600; }
+            #KidsStatsPage .kidsSummary span { opacity: 0.75; font-size: 0.9em; }
+            #KidsStatsPage .kidsNotice { padding: 0.75em 1em; margin: 0 0 1.5em; border: 1px solid var(--jf-palette-divider, rgba(128, 128, 128, 0.4)); border-radius: var(--jf-card-borderRadius, 0.2em); }
+            #KidsStatsPage .kidsNotice[hidden], #KidsStatsPage [hidden] { display: none !important; }
+            #KidsStatsPage .kidsNotice p { margin: 0.3em 0; }
+            #KidsStatsPage .kidsTabs { display: flex; flex-wrap: wrap; gap: 0.25em; margin: 0 0 1.2em; border-bottom: 1px solid var(--jf-palette-divider, rgba(128, 128, 128, 0.3)); }
+            #KidsStatsPage .kidsTab { background: none; border: 0; border-bottom: 3px solid transparent; color: inherit; opacity: 0.75; font: inherit; padding: 0.75em 1em; min-height: 44px; cursor: pointer; }
+            #KidsStatsPage .kidsTab[aria-selected="true"] { opacity: 1; font-weight: 600; border-bottom-color: var(--jf-palette-primary-main, #00a4dc); }
+            #KidsStatsPage .kidsTab:focus-visible, #KidsStatsPage .kidsExpand:focus-visible { outline: 2px solid var(--jf-palette-primary-main, #00a4dc); outline-offset: -2px; }
+            #KidsStatsPage .kidsPanelTitle { margin: 0 0 0.75em; font-size: 1.05em; font-weight: 600; }
+            #KidsStatsPage .kidsPanelTitle span { font-weight: normal; opacity: 0.75; margin-left: 0.4em; }
+            #KidsStatsPage .kidsChart { width: 100%; overflow-x: auto; }
+            #KidsStatsPage .kidsChart svg { display: block; width: 100%; min-width: 30em; height: auto; }
+            #KidsStatsPage .kidsChart text { fill: currentColor; font-size: 11px; }
+            #KidsStatsPage .kidsChart .kidsGridLine { stroke: currentColor; stroke-opacity: 0.15; }
+            #KidsStatsPage .kidsChart .kidsLimit { stroke: currentColor; stroke-opacity: 0.8; stroke-dasharray: 4 3; fill: none; }
+            #KidsStatsPage .kidsLegend { display: flex; flex-wrap: wrap; gap: 0.3em 1.2em; margin: 0.75em 0 0; padding: 0; list-style: none; font-size: 0.9em; }
+            #KidsStatsPage .kidsSwatch { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 0.15em; margin-right: 0.4em; vertical-align: -0.1em; }
+            #KidsStatsPage .kidsSwatchLine { display: inline-block; width: 1.4em; margin-right: 0.4em; border-top: 2px dashed currentColor; vertical-align: 0.3em; }
+            #KidsStatsPage .kidsTableBox { overflow-x: auto; }
+            #KidsStatsPage table.kidsTable { width: 100%; border-collapse: collapse; }
+            #KidsStatsPage .kidsTable th, #KidsStatsPage .kidsTable td { text-align: left; padding: 0.55em 0.6em; border-bottom: 1px solid var(--jf-palette-divider, rgba(128, 128, 128, 0.2)); white-space: nowrap; }
+            #KidsStatsPage .kidsTable th { font-weight: 600; opacity: 0.8; font-size: 0.9em; }
+            #KidsStatsPage .kidsTable td.kidsName { white-space: normal; overflow-wrap: anywhere; width: 100%; }
+            #KidsStatsPage .kidsTable .kidsNum { text-align: right; }
+            #KidsStatsPage .kidsTable tr.kidsEpisode td { opacity: 0.85; font-size: 0.92em; }
+            #KidsStatsPage .kidsTable tr.kidsEpisode td.kidsName { padding-left: 2.6em; }
+            #KidsStatsPage .kidsExpand { background: none; border: 0; color: inherit; font: inherit; padding: 0.2em 0.3em 0.2em 0; min-height: 44px; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 0.3em; }
+            #KidsStatsPage .kidsExpand .material-icons { font-size: 1.3em; }
+            #KidsStatsPage .kidsLive { font-size: 0.8em; margin-left: 0.5em; padding: 0 0.45em; border: 1px solid currentColor; border-radius: 1em; opacity: 0.8; }
+            #KidsStatsPage .kidsHeat { display: grid; grid-template-columns: 4.5em repeat(24, minmax(1.4em, 1fr)); gap: 2px; min-width: 38em; font-size: 0.8em; }
+            #KidsStatsPage .kidsHeat .kidsHeatCell { height: 2.2em; border-radius: 0.2em; background: var(--jf-palette-primary-main, #00a4dc); }
+            #KidsStatsPage .kidsHeat .kidsHeatEmpty { background: var(--jf-palette-divider, rgba(128, 128, 128, 0.15)); }
+            #KidsStatsPage .kidsHeat .kidsHeatHour { text-align: center; opacity: 0.75; }
+            #KidsStatsPage .kidsHeat .kidsHeatRow { align-self: center; font-weight: 600; }
+            #KidsStatsPage .kidsBar { height: 0.55em; border-radius: 0.3em; background: var(--jf-palette-primary-main, #00a4dc); min-width: 2px; }
+            #KidsStatsPage .kidsEmpty { padding: 1em 0; opacity: 0.85; }
+            #KidsStatsPage .kidsSettings { margin-top: 2.5em; }
+            #KidsStatsPage .kidsPrivacy { display: flex; gap: 0.5em; align-items: flex-start; }
+            #KidsStatsPage .kidsDanger { margin-top: 0.5em; }
+        </style>
+        <div data-role="content">
+            <div class="content-primary">
+                <div class="verticalSection">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle" data-i18n="title">Kids statistics</h2>
+                    </div>
+                    <p class="fieldDescription" data-i18n="intro">How much each kid watches, what and when. Everything is counted on this server, from every app.</p>
+                </div>
+
+                <p class="kidsError" role="status" aria-live="polite" hidden></p>
+
+                <div class="kidsFilters">
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="kidsStatsKid" data-i18n="kid">Kid</label>
+                        <select is="emby-select" id="kidsStatsKid" class="emby-select-withcolor emby-select kidsStatsKid"></select>
+                        <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                    </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="kidsStatsRange" data-i18n="range">Period</label>
+                        <select is="emby-select" id="kidsStatsRange" class="emby-select-withcolor emby-select kidsStatsRange"></select>
+                        <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                    </div>
+                </div>
+
+                <p class="kidsEmpty kidsNoKids" data-i18n="noKids" hidden>No kids yet. Mark kids on the Kids page first.</p>
+
+                <div class="kidsBody">
+                    <div class="kidsSummary" aria-live="polite"></div>
+
+                    <div class="kidsNotice kidsOffNotice" hidden>
+                        <p><strong data-i18n="offTitle">Advanced statistics are off.</strong></p>
+                        <p data-i18n="offBody">Minutes per day still show, from the daily screen time. Turn on advanced statistics below to see what each kid watches, when and on which device.</p>
+                        <p class="kidsOffKept" hidden></p>
+                    </div>
+
+                    <div class="kidsTabs" role="tablist" aria-label="Statistics views">
+                        <button type="button" role="tab" class="kidsTab" id="kidsStatsTab-day" data-tab="day" aria-controls="kidsStatsPanel-day" aria-selected="true" data-i18n="tabDay">By day</button>
+                        <button type="button" role="tab" class="kidsTab" id="kidsStatsTab-series" data-tab="series" aria-controls="kidsStatsPanel-series" aria-selected="false" tabindex="-1" data-i18n="tabSeries">By series</button>
+                        <button type="button" role="tab" class="kidsTab" id="kidsStatsTab-hour" data-tab="hour" aria-controls="kidsStatsPanel-hour" aria-selected="false" tabindex="-1" data-i18n="tabHour">By hour</button>
+                        <button type="button" role="tab" class="kidsTab" id="kidsStatsTab-device" data-tab="device" aria-controls="kidsStatsPanel-device" aria-selected="false" tabindex="-1" data-i18n="tabDevice">By device</button>
+                    </div>
+
+                    <div class="kidsPanel" id="kidsStatsPanel-day" data-tab="day" role="tabpanel" aria-labelledby="kidsStatsTab-day">
+                        <p class="kidsPanelTitle"><span data-i18n="dayTitle">Time per day</span><span class="kidsDaySubtitle"></span></p>
+                        <div class="kidsChart kidsDayChart"></div>
+                        <ul class="kidsLegend kidsDayLegend"></ul>
+                    </div>
+                    <div class="kidsPanel" id="kidsStatsPanel-series" data-tab="series" role="tabpanel" aria-labelledby="kidsStatsTab-series" hidden>
+                        <p class="kidsPanelTitle"><span data-i18n="seriesTitle">Most watched</span><span data-i18n="seriesHint">open a series to see its episodes</span></p>
+                        <div class="kidsTableBox kidsSeries"></div>
+                    </div>
+                    <div class="kidsPanel" id="kidsStatsPanel-hour" data-tab="hour" role="tabpanel" aria-labelledby="kidsStatsTab-hour" hidden>
+                        <p class="kidsPanelTitle"><span data-i18n="hourTitle">When they watch</span><span data-i18n="hourHint">server time</span></p>
+                        <div class="kidsChart kidsHours"></div>
+                    </div>
+                    <div class="kidsPanel" id="kidsStatsPanel-device" data-tab="device" role="tabpanel" aria-labelledby="kidsStatsTab-device" hidden>
+                        <p class="kidsPanelTitle"><span data-i18n="deviceTitle">Where they watch</span></p>
+                        <div class="kidsTableBox kidsDevices"></div>
+                    </div>
+                </div>
+
+                <div class="verticalSection kidsSettings">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h3 class="sectionTitle" data-i18n="settingsTitle">Statistics settings</h3>
+                    </div>
+                    <form class="kidsSettingsForm">
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label>
+                                <input is="emby-checkbox" type="checkbox" class="kidsAdvancedStats" />
+                                <span data-i18n="advanced">Advanced statistics</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription" data-i18n="advancedHelp">Keeps what each kid watches, when and on which device. Off by default.</div>
+                            <div class="fieldDescription checkboxFieldDescription" data-i18n="advancedOff">Turning it off stops recording at once. What was already kept stays until it is older than the days below, or until you delete it here.</div>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="kidsRetention" data-i18n="retention">Keep data for</label>
+                            <select is="emby-select" id="kidsRetention" class="emby-select-withcolor emby-select kidsRetention"></select>
+                            <div class="selectArrowContainer"><div style="visibility:hidden;display:none;">0</div><span class="selectArrow material-icons keyboard_arrow_down" aria-hidden="true"></span></div>
+                            <div class="fieldDescription" data-i18n="retentionHelp">Applies to minutes per day and to the watch log. Older days are deleted every night by the "Prune kids screen time" task; a shorter period applies from its next run.</div>
+                        </div>
+                        <p class="fieldDescription kidsPrivacy"><span class="material-icons lock" aria-hidden="true"></span><span data-i18n="privacy">Everything stays on this server. Nothing is sent anywhere: no telemetry, no third parties.</span></p>
+                        <p class="fieldDescription kidsHeld" role="status" aria-live="polite"></p>
+                        <button is="emby-button" type="submit" class="raised button-submit block kidsSettingsSave">
+                            <span data-i18n="save">Save</span>
+                        </button>
+                        <button is="emby-button" type="button" class="raised block kidsDanger kidsDeleteLog">
+                            <span data-i18n="delete">Delete the watch log</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

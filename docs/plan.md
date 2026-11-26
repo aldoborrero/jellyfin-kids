@@ -458,8 +458,8 @@ Jellyfin.Plugin.Kids (assembly; plugin name "Kids"; guid d62ee188-270c-49d8-b7b9
 │   └── EnforcementLoop            IHostedService; 5 s timer: warnings, Stop + DisplayMessage, transcode kill, schedule-close stop
 ├── Enforcement/PlaybackGateFilter IAsyncActionFilter via Configure<MvcOptions>; 403 {"kids":"timeUp"} for gated actions
 ├── Events/UserDeletedConsumer     IEventConsumer<UserDeletedEventArgs>: drop profile/usage rows
-├── Tasks/PruneUsageTask           IScheduledTask (found by assembly scanning, not DI): prune screen time older than 90 days
-│                                  daily at 03:30; strict-lock reconciliation comes later
+├── Tasks/PruneUsageTask           IScheduledTask (found by assembly scanning, not DI): prune screen time and the watch log older
+│                                  than the retention setting (90 days by default, feature 22) daily at 03:30; strict-lock reconciliation comes later
 └── Api/                       KidsController (route prefix /Kids), ParentLockController (/Kids/Parent) and
                                AllowanceController (/Kids/Users/{userId}: Status, WatchTime/Bonus, WatchTime/Report)
 ```
@@ -507,7 +507,7 @@ NuGet packages (more detail in §6.4):
 |---|---|---|
 | `GET /Kids/Info` | anonymous | → `{pluginVersion, apiVersion:1, features:["profiles","parentLock","allowance","sessionLimit","enforcement","schedules"]}`. Detection: 200 means plugin mode, 404 means no plugin (no kids features), a network error keeps the last known mode. Null fields are omitted, so a client checks the feature (for example `sessionLimit`) before reading a missing field as "none". Nothing per-household, so no lock type (constitution IV; decided 2026-10-18 in feature 2): clients read it from `GET /Kids/Parent/Lock` after signing in |
 | `GET /Kids/Profiles` | `[Authorize(IgnoreParentalControl)]` | → `[{userId, revision}]`, so the user switcher knows who the kids are. Ids only |
-| `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap, pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionLimitMinutes? (5–120, stored only, counted per device), strictLock}`, or 404 if the user is not a kid |
+| `GET /Kids/Users/{userId}/Profile` | self or admin | → `KidProfileDto {userId, revision, searchAllowed, autoplayEnabled, autoplayCap (1–10, or 0 for no limit), pickedItemIds[], sections[{section,visible}], dailyAllowanceMinutes?, sessionLimitMinutes? (5–120, stored only, counted per device), strictLock}`, or 404 if the user is not a kid |
 | `PUT /Kids/Users/{userId}/Profile` | admin or grant | body with the base `revision` (required; **0 marks the user as a kid**, 409 if already a kid) → 200 with the new revision, or **409 with the current DTO**. The revision is checked before validation, so stale and invalid gives 409 |
 | `DELETE /Kids/Users/{userId}/Profile` | admin or grant | unmarks the kid; usage is kept unless `?purge=true` (feature 3) |
 | `POST /Kids/Parent/Verify` | `[Authorize(IgnoreParentalControl)]` | `{code}` → `{valid:true, grant, expiresAt}`, or `{valid:false, retryAfterSeconds?}` |
@@ -525,6 +525,8 @@ NuGet packages (more detail in §6.4):
 | `GET /Kids/Admin/PickCandidates` | admin | `?search=&ids=&limit=` → `[{id, name, type:"BoxSet"\|"Playlist"}]`, every collection and playlist on the server whoever owns them (Jellyfin's `/Items` hides other users' private playlists from admins), for the picks chooser |
 | `GET /Kids/Users/{userId}/LiveTv/Channels`, `…/LiveTv/Programs` | self or admin, IgnoreParentalControl | (feature 6) the kid's allowed channels with the program on now, and their guide for a window (default 24 h, at most 7 days), in Jellyfin's `QueryResult<BaseItemDto>` shape |
 | `GET /Kids/Admin/LiveTvChannels` | admin | (feature 6) every live TV channel `[{id, name, number, imageTag, type}]`, for the kid editor |
+| `GET /Kids/Users/{userId}/Stats` | admin or grant | (feature 22) `?days=1–90` (7) → minutes per day with bonus and allowance, and with advanced statistics the top 5 series and the breaks; contract `specs/022-kids-stats/contracts/kids-api-v1-stats.md` |
+| `GET /Kids/Users/{userId}/Stats/Detail`, `GET` and `DELETE /Kids/Admin/WatchLog` | admin or grant; admin | (feature 22) the dashboard's statistics page: per day by series, per series with episodes, per hour, per device; the watch log's size and its deletion |
 
 Errors use `ProblemDetails`. The gate filter's 403 body is `{"kids":"timeUp","remainingSeconds":0}` or
 `{"kids":"outsideSchedule"}`.

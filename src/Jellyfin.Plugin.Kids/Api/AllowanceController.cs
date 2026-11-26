@@ -266,7 +266,7 @@ public class AllowanceController : ControllerBase
             return NotAKid();
         }
 
-        _enforcement.ResetSitting(userId);
+        _enforcement.ResetSitting(userId, _time.GetUtcNow());
         _logger.LogInformation(
             "Screen time of {UserId} reset for {Day} by {Caller}: {UsedMinutes} min used and {BonusMinutes} min bonus cleared",
             userId,

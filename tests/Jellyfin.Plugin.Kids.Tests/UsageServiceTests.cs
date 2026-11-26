@@ -522,6 +522,40 @@ public sealed class UsageServiceTests : IDisposable
         Assert.Equal(2000, await _store.GetUsedMsAsync(_alice, kept));
     }
 
+    [Fact]
+    public async Task Prune_ShortRetention_KeepsReportedIdsWhileReportsMayStillArrive()
+    {
+        // A TV resending its offline queue after the day itself was pruned must not count the segment again
+        await MarkAsync(_alice);
+        _settings.RetentionDays = 30;
+        var segments = new[] { new SegmentInput("old", _time.Now.AddDays(-45), 600) };
+        var old = DayClock.Format(new DateOnly(2026, 10, 18).AddDays(-45));
+        await _service.ReportAsync(_alice, segments, TestContext.Current.CancellationToken);
+
+        await _service.PruneAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(0, await _store.GetUsedMsAsync(_alice, old));
+        Assert.Equal(1L, ReadScalar<long>("SELECT count(*) FROM reported_segment"));
+
+        var again = await _service.ReportAsync(_alice, segments, TestContext.Current.CancellationToken);
+
+        Assert.Equal(UsageOutcome.Saved, again.Outcome);
+        Assert.Equal(0, await _store.GetUsedMsAsync(_alice, old));
+    }
+
+    [Fact]
+    public async Task Prune_ShortRetention_DropsReportedIdsOnceReportsAreTooOld()
+    {
+        await MarkAsync(_alice);
+        _settings.RetentionDays = 30;
+        var tooOld = DayClock.Format(new DateOnly(2026, 10, 18).AddDays(-SegmentValidator.MaxAgeDays - 1));
+        await _service.ReportAsync(_alice, [new SegmentInput("recent", _time.Now.AddDays(-45), 60)], TestContext.Current.CancellationToken);
+        Execute($"UPDATE reported_segment SET day = '{tooOld}'");
+
+        await _service.PruneAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0L, ReadScalar<long>("SELECT count(*) FROM reported_segment"));
+    }
+
     private T ReadScalar<T>(string sql)
     {
         using var connection = new SqliteConnection($"Data Source={_db.DatabasePath};Pooling=False");

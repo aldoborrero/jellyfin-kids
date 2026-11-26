@@ -8,6 +8,7 @@ using Jellyfin.Plugin.Kids.Hosted;
 using Jellyfin.Plugin.Kids.LiveTv;
 using Jellyfin.Plugin.Kids.ParentLock;
 using Jellyfin.Plugin.Kids.Profiles;
+using Jellyfin.Plugin.Kids.Stats;
 using Jellyfin.Plugin.Kids.Storage;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Events;
@@ -38,6 +39,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IKidsSettings, PluginKidsSettings>();
         serviceCollection.AddSingleton<UsageStore>();
         serviceCollection.AddSingleton<UsageService>();
+        serviceCollection.AddSingleton<StatsStore>();
+        serviceCollection.AddSingleton<WatchLog>();
+        serviceCollection.AddSingleton<StatsService>();
         serviceCollection.AddSingleton<IKidsUserDirectory, JellyfinUserDirectory>();
         serviceCollection.AddSingleton<IPickCatalog, JellyfinPickCatalog>();
         serviceCollection.AddSingleton<ILiveTvChannelCatalog, JellyfinLiveTvChannelCatalog>();

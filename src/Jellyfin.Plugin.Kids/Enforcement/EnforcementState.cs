@@ -54,6 +54,12 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     /// </summary>
     public event EventHandler<GenericEventArgs<Guid>>? ReloadRequested;
 
+    /// <summary>
+    /// Raised, outside any lock, when a kid's sitting limit is reached and a break starts, or when a grown-up ends a
+    /// break early, for the watch log (feature 22). Rules are unchanged by it. Handlers must not throw or do I/O.
+    /// </summary>
+    public event EventHandler<GenericEventArgs<BreakNotice>>? BreakChanged;
+
     /// <inheritdoc />
     public bool IsEnabled => _settings.EnforcementEnabled;
 
@@ -101,15 +107,25 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     /// Ends a kid's current sitting and its break, for a parent's reset (feature 7).
     /// </summary>
     /// <param name="kid">The kid.</param>
-    public void ResetSitting(Guid kid)
+    /// <param name="now">The current time, to note a break it ends for the watch log; null notes nothing.</param>
+    public void ResetSitting(Guid kid, DateTimeOffset? now = null)
     {
+        BreakNotice? ended = null;
         lock (_lock)
         {
             if (_kids.TryGetValue(kid, out var state))
             {
+                if (now is { } at && Sitting(state, at) is { BreakEndsAt: { } ends } sitting && ends > at)
+                {
+                    var started = BreakStart(state, sitting, ends);
+                    ended = new BreakNotice(kid, started, at - started, true);
+                }
+
                 state.Sitting.Reset();
             }
         }
+
+        Notify(ended);
     }
 
     /// <summary>
@@ -122,16 +138,23 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     /// <returns>How much of the break was left, or null if the kid was not in a break.</returns>
     public TimeSpan? EndBreak(Guid kid, DateTimeOffset now)
     {
+        TimeSpan left;
+        BreakNotice ended;
         lock (_lock)
         {
-            if (!_kids.TryGetValue(kid, out var state) || Sitting(state, now) is not { BreakEndsAt: { } ends } || ends <= now)
+            if (!_kids.TryGetValue(kid, out var state) || Sitting(state, now) is not { BreakEndsAt: { } ends } sitting || ends <= now)
             {
                 return null;
             }
 
             state.Sitting.Reset();
-            return ends - now;
+            left = ends - now;
+            var started = BreakStart(state, sitting, ends);
+            ended = new BreakNotice(kid, started, now - started, true);
         }
+
+        Notify(ended);
+        return left;
     }
 
     /// <summary>
@@ -167,10 +190,20 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
     public void OnPlayed(Guid kid, DateTimeOffset from, DateTimeOffset to)
     {
         bool reload;
+        BreakNotice? started = null;
         lock (_lock)
         {
             var state = GetOrAdd(kid);
+            var before = Sitting(state, from);
             state.Sitting.Add(from, to, _settings.SittingBreak);
+
+            // The limit reached by this interval: a break starts (for the watch log only)
+            if (before is { BreakEndsAt: null } && Sitting(state, to) is { BreakEndsAt: { } ends })
+            {
+                state.BreakStartedAt = ends - _settings.SittingBreak;
+                started = new BreakNotice(kid, state.BreakStartedAt.Value, _settings.SittingBreak, false);
+            }
+
             reload = false;
             if (state.Budget is { } budget)
             {
@@ -185,6 +218,7 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
             }
         }
 
+        Notify(started);
         if (reload)
         {
             ReloadRequested?.Invoke(this, new GenericEventArgs<Guid>(kid));
@@ -376,6 +410,22 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
         return true;
     }
 
+    private void Notify(BreakNotice? notice)
+    {
+        if (notice is not null)
+        {
+            BreakChanged?.Invoke(this, new GenericEventArgs<BreakNotice>(notice));
+        }
+    }
+
+    // When the current break started: the moment its sitting reached the limit, noted then, since BreakEndsAt follows
+    // the last counted play and moves when play is still counted after the limit. A note from an earlier sitting is
+    // ignored (a break reached by lowering the limit was never noted).
+    private DateTimeOffset BreakStart(KidState state, SittingState sitting, DateTimeOffset ends)
+        => state.BreakStartedAt is { } noted && sitting.StartedAt is { } sittingStart && noted >= sittingStart
+            ? noted
+            : ends - _settings.SittingBreak;
+
     private DayClock Clock() => new(_settings.Zone, _settings.DayStartsAtHour);
 
     private KidState GetOrAdd(Guid kid)
@@ -402,5 +452,7 @@ public sealed class EnforcementState : IPlaybackGate, ILiveTvGate
         public Sitting Sitting { get; } = new();
 
         public DateTimeOffset? ReloadAskedAt { get; set; }
+
+        public DateTimeOffset? BreakStartedAt { get; set; }
     }
 }

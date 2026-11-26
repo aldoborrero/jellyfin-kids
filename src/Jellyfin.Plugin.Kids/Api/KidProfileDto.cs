@@ -11,7 +11,7 @@ namespace Jellyfin.Plugin.Kids.Api;
 /// <param name="Revision">The current revision.</param>
 /// <param name="SearchAllowed">Whether the kid may search.</param>
 /// <param name="AutoplayEnabled">Whether autoplay is on.</param>
-/// <param name="AutoplayCap">How many episodes autoplay may play in a row.</param>
+/// <param name="AutoplayCap">How many episodes autoplay may play in a row, or 0 for no limit.</param>
 /// <param name="Sections">The home sections in order, with their visibility.</param>
 /// <param name="PickedItemIds">The picked collections and playlists in order.</param>
 /// <param name="DailyAllowanceMinutes">The daily screen-time allowance in minutes, 0–1440; absent when unlimited.</param>
