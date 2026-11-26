@@ -38,6 +38,8 @@ Saving stores `AutoplayCap = 0`. Reopening the kid shows the box ticked and the 
 2. Unticking it enables the field again, with the default 3 when the stored value was 0.
 3. With autoplay off, both the box and the field are disabled, as the field was before.
 4. Ticking or unticking the box marks the form as unsaved.
+5. A help line under the box says it needs a kids app that supports it, and that older versions play one episode
+   and then stop.
 
 ### User Story 2: No limit from Peke (P1)
 
@@ -51,7 +53,8 @@ Peke reads `unlimitedAutoplay` in `GET /Kids/Info`, offers "No limit", and sends
 - **FR-002**: A missing `AutoplayCap` MUST give 3, as before.
 - **FR-003**: `GET /Kids/Info` MUST list `unlimitedAutoplay` after the earlier features. `ApiMinorVersion` becomes 3,
   since the change is additive.
-- **FR-004**: The kid editor MUST offer "No limit" next to the autoplay limit and save it as 0.
+- **FR-004**: The kid editor MUST offer "No limit" next to the autoplay limit and save it as 0. A help line
+  under it MUST say that it needs a kids app that supports it.
 - **FR-005**: Profile summaries MUST show "No limit" for 0. Today no summary shows the autoplay limit (the Kids page
   list shows the role and the daily allowance only), so there is nothing to change.
 
