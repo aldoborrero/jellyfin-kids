@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Events;
@@ -43,6 +44,7 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
     private readonly PlaybackClock _clock = new();
     private ITimer? _timer;
     private bool _rosterFailureLogged;
+    private bool _watchFailureLogged;
     private int _ticking;
 
     /// <summary>
@@ -154,25 +156,7 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
                     _enforcement.OnPlayed(userId, from, to);
                 }
 
-                // The watch log reads the item from memory only, and only while it is on
-                if (_watch.Enabled)
-                {
-                    if (counted.Count > 0)
-                    {
-                        var item = WatchItem.From(e.Item);
-                        var device = session.DeviceName ?? e.DeviceName;
-                        var client = session.Client ?? e.ClientName;
-                        foreach (var (userId, from, to) in counted)
-                        {
-                            _watch.Played(session.Id, e.PlaySessionId, userId, item, device, client, from, to);
-                        }
-                    }
-
-                    if (kind == PlaybackEventKind.Stop)
-                    {
-                        _watch.Stopped(session.Id, e.PlaySessionId);
-                    }
-                }
+                AddToWatchLog(kind, e, session, counted);
             }
 
             // Decided in memory; any action runs off the session manager's thread
@@ -187,6 +171,43 @@ public sealed class PlaybackTracker : IHostedService, IDisposable
         {
             _logger.LogError(ex, "Could not count a playback event for kids screen time");
             return false;
+        }
+    }
+
+    // The watch log reads the item from memory only, and only while it is on. Its own catch: a failure here never
+    // stops the screen time count or enforcement for the same event
+    private void AddToWatchLog(PlaybackEventKind kind, PlaybackProgressEventArgs e, SessionInfo session, IReadOnlyList<(Guid UserId, DateTimeOffset From, DateTimeOffset To)> counted)
+    {
+        try
+        {
+            if (_watch.Enabled && counted.Count > 0)
+            {
+                var item = WatchItem.From(e.Item);
+                var device = session.DeviceName ?? e.DeviceName;
+                var client = session.Client ?? e.ClientName;
+                foreach (var (userId, from, to) in counted)
+                {
+                    _watch.Played(session.Id, e.PlaySessionId, userId, item, device, client, from, to);
+                }
+            }
+
+            // Also while off, so a segment open when it was turned off ends at the stop
+            if (kind == PlaybackEventKind.Stop)
+            {
+                _watch.Stopped(session.Id, e.PlaySessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!_watchFailureLogged)
+            {
+                _watchFailureLogged = true;
+                _logger.LogWarning(ex, "Could not add a playback event to the kids watch log; screen time is still counted");
+            }
+            else
+            {
+                _logger.LogDebug(ex, "Could not add a playback event to the kids watch log");
+            }
         }
     }
 
